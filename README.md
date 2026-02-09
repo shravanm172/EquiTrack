@@ -4,3 +4,6 @@ A full-stack portfolio management dashboard with integrated scenario-based marke
 
 .\venv\scripts\Activate.ps1
 pip freeze > requirments.txt
+
+portfolio:
+weights = {"AAPL": 0.6, "MSFT": 0.4}
