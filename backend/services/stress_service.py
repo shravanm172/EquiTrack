@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from providers.market_data import fetch_price_history
-from analysis_service import _analyze_from_prices
+from services.analysis_service import _analyze_from_prices
 
 
 from engines.scenario_engine import (

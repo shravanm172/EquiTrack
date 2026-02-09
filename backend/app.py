@@ -4,7 +4,7 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from analysis_service import analyze_portfolio
+from services.analysis_service import analyze_portfolio
 from services.stress_service import analyze_with_shock
 
 def create_app() -> Flask:
