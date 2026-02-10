@@ -136,3 +136,14 @@ Scenarios are selected via request payload configuration.
 ```powershell
 python -m venv venv
 .\venv\Scripts\Activate.ps1
+
+
+## Test Suite:
+- test_build_and_analyze_portfolio_integration
+    - test_analyze_from_prices_integration
+        - test_prices_to_returns
+        - test_portfolio_returns
+        - test_equity_curve
+        - test_risk_metrics
+- test_analyze_with_shock_integration
+    - test_scenarios
