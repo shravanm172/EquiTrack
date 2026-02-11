@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import json
 
 from providers.market_data import fetch_price_history
 from services.analysis_service import analyze_portfolio
@@ -82,7 +83,7 @@ def create_app() -> Flask:
                 "valid": False,
                 "ticker": ticker,
                 "requested_date": requested_date,
-                "reason": "provider error",
+                "reason": "Unspecified provider error. Check ticker.",
             }), 200
 
     @app.post("/api/analyze")
@@ -90,6 +91,15 @@ def create_app() -> Flask:
         payload = request.get_json(silent=True) or {}
         try:
             result = analyze_portfolio(payload)
+            # TEMP DEBUG LOGS:
+            print("=== /api/analyze payload ===")
+            print(json.dumps(payload, indent=2))
+            print("=== /api/analyze result.metrics ===")
+            print(json.dumps(result.get("metrics", {}), indent=2))
+            print("=== /api/analyze equity_curve head/tail ===")
+            curve = result.get("equity_curve", [])
+            print("head:", curve[:3])
+            print("tail:", curve[-3:])
             return jsonify(result)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400

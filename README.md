@@ -10,9 +10,9 @@ The project is intentionally built as an evolving system: today it focuses on de
 
 ### Portfolio Analytics
 - Portfolio defined as a set of tickers and weights
-  (share-based holdings planned for later versions)
+  Weights may be provided directly by the user or derived from user-specified share counts using market prices on the portfolio start date.
 - Real historical price data fetched over a user-defined date range
-- Conversion pipeline:
+- Analysis pipeline:
   1. Prices → daily returns  
   2. Asset returns → weighted portfolio returns  
   3. Portfolio returns → equity curve

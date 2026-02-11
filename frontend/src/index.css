@@ -54,6 +54,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+button {
+  color: white;
+}
+
 /* ===============================
    Simulator Page 
    =============================== */
@@ -100,4 +104,44 @@ body {
   .simulator-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Line Chart Styles */
+.chart-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.chart-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.chart-title {
+  margin: 0;
+}
+
+.chart-toggle {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.chart-area {
+  width: 100%;
+}
+
+.toggle-btn {
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  cursor: pointer;
+}
+
+.toggle-btn.active {
+  border-color: rgba(255, 255, 255, 0.35);
 }
