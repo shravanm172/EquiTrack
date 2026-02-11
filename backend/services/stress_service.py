@@ -5,6 +5,7 @@ import pandas as pd
 
 from providers.market_data import fetch_price_history
 from services.analysis_service import _analyze_from_prices, shares_to_weights_from_prices
+from services.store_singleton import analysis_store
 
 from engines.scenario_engine import (
     apply_price_shock,
@@ -108,7 +109,8 @@ def analyze_with_shock(payload: dict[str, Any]) -> dict[str, Any]:
     rebound_days = int(shock.get("rebound_days", 10))
 
     # --- Baseline analysis ---
-    baseline = _analyze_from_prices(prices, weights, float(starting_cash))
+    baseline = _analyze_from_prices(prices, weights, float(starting_cash), return_artifacts=True)
+    base_art = baseline.pop("_artifacts")
 
     # --- Scenario analysis (apply shock then re-run analysis) ---
     if shock_type == "permanent":
@@ -138,13 +140,16 @@ def analyze_with_shock(payload: dict[str, Any]) -> dict[str, Any]:
             f"Unknown shock.type '{shock_type}'. Use 'permanent', 'linear_rebound', or 'regime_shift'."
         )
 
-    scenario = _analyze_from_prices(shocked_prices, weights, float(starting_cash))
+    scenario = _analyze_from_prices(shocked_prices, weights, float(starting_cash), return_artifacts=True)
+    scen_art = scenario.pop("_artifacts")
 
     # --- Metric deltas (scenario - baseline) ---
     delta_metrics = {
         k: float(scenario["metrics"][k]) - float(baseline["metrics"][k])
         for k in baseline["metrics"].keys()
     }
+
+
 
     resp = {
         "inputs": {
@@ -167,6 +172,19 @@ def analyze_with_shock(payload: dict[str, Any]) -> dict[str, Any]:
         "scenario": scenario,
         "delta": {"metrics": delta_metrics},
     }
+
+    # Cache portfolio returns for further analysis
+    analysis_id = analysis_store.put({
+        "kind": "analyze_shock",
+        "inputs": resp["inputs"],
+        "baseline_returns": base_art["portfolio_returns"],   # pd.Series
+        "scenario_returns": scen_art["portfolio_returns"],   # pd.Series
+        "baseline_last_equity_date": base_art["equity_series"].index[-1],
+        "baseline_last_equity_value": float(base_art["equity_series"].iloc[-1]),
+        "scenario_last_equity_date": scen_art["equity_series"].index[-1],
+        "scenario_last_equity_value": float(scen_art["equity_series"].iloc[-1]),
+    })
+    resp["analysis_id"] = analysis_id
 
     if mode == "shares" and holdings_breakdown is not None:
         resp["holdings_breakdown"] = holdings_breakdown

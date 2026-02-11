@@ -12,12 +12,14 @@ from engines.analytics_engine import (
     max_drawdown,
     sharpe_ratio,
 )
+from services.store_singleton import analysis_store
 
 
 def _analyze_from_prices(
     prices: pd.DataFrame,
     weights: dict[str, float],
     starting_cash: float,
+    return_artifacts: bool = False,
 ) -> dict[str, Any]:
     """
     Core analysis pipeline given prices:
@@ -39,7 +41,15 @@ def _analyze_from_prices(
         for idx, val in curve.items()
     ]
 
-    return {"equity_curve": curve_json, "metrics": metrics}
+    out = {"equity_curve": curve_json, "metrics": metrics}
+
+    if return_artifacts:
+        out["_artifacts"] = {
+            "portfolio_returns": port_r.dropna(),  # pd.Series
+            "equity_series": curve,                
+        }
+
+    return out
 
 
 def analyze_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
@@ -122,9 +132,24 @@ def analyze_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
         holdings_breakdown = None  # not applicable in weights mode
 
     # Run the unchanged analysis pipeline
-    baseline = _analyze_from_prices(prices, weights, float(starting_cash))
+    baseline = _analyze_from_prices(prices, weights, float(starting_cash), return_artifacts=True)
+    art = baseline.pop("_artifacts")
+
+    analysis_id = analysis_store.put({
+        "kind": "analyze",
+        "inputs": {
+            "mode": mode,
+            "starting_cash": float(starting_cash),
+            "date_range": {"start": start, "end": end},
+            "weights": weights,
+        },
+        "portfolio_returns": art["portfolio_returns"],  # pd.Series
+        "last_equity_date": art["equity_series"].index[-1],
+        "last_equity_value": float(art["equity_series"].iloc[-1]),
+    })
 
     resp = {
+        "analysis_id": analysis_id,
         "inputs": {
             "mode": mode,
             "starting_cash": float(starting_cash),

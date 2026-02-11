@@ -8,6 +8,8 @@ import json
 from providers.market_data import fetch_price_history
 from services.analysis_service import analyze_portfolio
 from services.stress_service import analyze_with_shock
+from services.store_singleton import analysis_store
+from engines.forecast_engine import forecast_portfolio
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -16,6 +18,10 @@ def create_app() -> Flask:
     @app.get("/api/health")
     def health():
         return jsonify({"status": "ok"})
+    
+    @app.get("/api/store/stats")
+    def store_stats():
+        return jsonify(analysis_store.stats())
     
     @app.post("/api/holdings/validate")
     def validate_holding():
@@ -116,8 +122,22 @@ def create_app() -> Flask:
             return jsonify({"error": str(e)}), 400
         except Exception:
             return jsonify({"error": "Internal server error"}), 500
+        
+    @app.post("/api/forecast")
+    def forecast():
+        payload = request.get_json(silent=True) or {}
+        try:
+            result = forecast_portfolio(payload)
+            return jsonify(result)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception:
+            return jsonify({"error": "Internal server error"}), 500
 
+    
+    
     return app
+
 
 
 if __name__ == "__main__":
