@@ -5,11 +5,13 @@ It combines real market data, quantitative risk metrics, and scenario-based stre
 
 The project is intentionally built as an evolving system: today it focuses on deterministic portfolio analysis and stress scenarios; future iterations will introduce stochastic Monte Carlo simulation and advanced risk modeling.
 
+---
 
 ## Core Features
 
 ### Portfolio Analytics
-- Portfolio defined as a set of tickers and weights
+
+- Portfolio defined as a set of tickers and weights  
   Weights may be provided directly by the user or derived from user-specified share counts using market prices on the portfolio start date.
 - Real historical price data fetched over a user-defined date range
 - Analysis pipeline:
@@ -22,12 +24,13 @@ The project is intentionally built as an evolving system: today it focuses on de
   - Maximum drawdown
   - Sharpe ratio
 
+---
 
 ### Scenario-Based Market Simulation (Stress Testing)
 
 EquiTrack includes a simulation sandbox environment that allows users to simulate how a portfolio behaves under different market conditions.
 
-Scenarios are implemented as price or return transformations
+Scenarios are implemented as price or return transformations.
 
 Currently supported scenarios:
 
@@ -41,24 +44,59 @@ Currently supported scenarios:
 
 3. **Regime Shift (Volatility + Drift)**
    - Increase in return volatility after a shock date
-   - Negative drift applied to returns, simulating prolonged market deterioration
-   - Produces realistic bear market behavior
+   - Drift shift applied to returns (positive or negative)
+   - Volatility multiplier scales deviations from mean returns
+   - Produces realistic prolonged bull or bear regime behavior
 
 > Monte Carlo simulation is planned as a future scenario type built on this same regime shift foundation.
 
+---
+
+### Interactive Scenario Controls (Frontend)
+
+The React dashboard provides dynamic stress configuration:
+
+- Shock date picker (aligned to trading days automatically)
+- Scenario type selector
+- Conditional inputs:
+  - Permanent / Linear Rebound → Shock %
+  - Linear Rebound → Rebound days
+  - Regime Shift → Volatility multiplier + Drift shift
+- Shock % is ignored for regime shift scenarios
+
+The UI dynamically renders only relevant controls based on selected scenario type, preventing invalid parameter combinations.
+
+---
 
 ### Baseline vs Scenario Comparison
 
 For stress testing, EquiTrack:
+
 - Computes a **baseline analysis** using historical data
 - Computes a **scenario analysis** using transformed prices/returns
 - Produces **delta metrics** to quantify the impact of the scenario:
-  - Change in return
+  - Change in annualized return
   - Change in volatility
   - Change in drawdown
   - Change in Sharpe ratio
 
-This allows direct comparison between normal market conditions and stressed environments.
+---
+
+### Equity Curve Overlay Visualization
+
+The frontend now supports multi-series equity curve visualization:
+
+- Baseline and stressed curves plotted on the **same chart**
+- Distinct colors for visual comparison
+- Interactive time resampling:
+  - Daily
+  - Weekly
+  - Monthly
+  - Max (full resolution)
+- Tooltip displays both baseline and stressed equity values simultaneously
+- Brush control allows zooming into specific time windows
+
+This enables intuitive visual comparison between historical and stressed market behavior.
 
 ---
 
@@ -93,14 +131,14 @@ The system is deliberately modular and scalable.
 
 ## API Endpoints
 
-### Baseline Analysis
+### Baseline Analysis  
 `POST /api/analyze`
 
 Returns:
 - equity curve
 - portfolio risk metrics
 
-### Stress Analysis
+### Stress Analysis  
 `POST /api/analyze_shock`
 
 Returns:
@@ -110,6 +148,7 @@ Returns:
 
 Scenarios are selected via request payload configuration.
 
+---
 
 ## Technology Stack
 
@@ -119,26 +158,30 @@ Scenarios are selected via request payload configuration.
 - pandas / NumPy
 - REST API architecture
 
-### Frontend (planned)
-- React
-- Interactive dashboard
-- Scenario configuration UI
-- Equity curve visualization
+### Frontend
+- React (Vite)
+- Recharts for visualization
+- Dynamic scenario configuration UI
+- Multi-series equity curve overlay
+- Interactive dashboard layout
 
 ### CI/CD (planned)
 - GitHub-integrated deployment (Vercel + Render)
 - Automated testing and validation before deployment
 - Full CI pipeline to be added as the project matures
 
+---
+
 ## Development Setup
 
 ### Create and activate virtual environment
+
 ```powershell
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 
 
-## Test Suite:
+## Test Suite
 - test_build_and_analyze_portfolio_integration
     - test_analyze_from_prices_integration
         - test_prices_to_returns
