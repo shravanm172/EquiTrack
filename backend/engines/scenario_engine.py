@@ -111,8 +111,11 @@ def apply_regime_shift(
     """
     if prices.empty:
         return prices.copy()
-
-    shocked = prices.copy()
+    
+    if isinstance(prices, pd.Series): # Ensure prices is a DataFrame for consistent processing
+        prices = prices.to_frame()
+        
+    shocked = prices.copy().astype(float)
     idx = shocked.index
     shock_ts = pd.to_datetime(shock_date, errors="raise")
 
@@ -147,9 +150,9 @@ def apply_regime_shift(
 
     # Build shocked price path for dates >= start_date
     shocked_path = (1.0 + post_rets).cumprod()
-    shocked_prices = shocked_path.mul(anchor_prices, axis=1)
+    shocked_prices = shocked_path.mul(anchor_prices, axis=1).astype(float)
 
     # Insert into shocked dataframe
-    shocked.loc[shocked_prices.index, shocked_prices.columns] = shocked_prices
+    shocked.update(shocked_prices)
 
     return shocked

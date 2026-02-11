@@ -1,4 +1,4 @@
-// Base Template for Line Charts
+// Base Template for Line Charts (supports 1+ series)
 
 import { useMemo, useState } from "react";
 import {
@@ -32,15 +32,15 @@ function defaultTooltipLabel(iso) {
 }
 
 // Keep last point per bucket
-function resample(points, mode) {
+function resample(points, mode, xKey = "date") {
   if (!Array.isArray(points) || points.length === 0) return [];
   if (mode === "daily" || mode === "max") return points;
 
   const keyFn =
     mode === "monthly"
-      ? (p) => String(p.date).slice(0, 7) // YYYY-MM
+      ? (p) => String(p[xKey]).slice(0, 7) // YYYY-MM
       : (p) => {
-          const d = parseISODate(p.date);
+          const d = parseISODate(p[xKey]);
           const y = d.getFullYear();
           const m = d.getMonth() + 1;
           const wom = Math.floor((d.getDate() - 1) / 7) + 1;
@@ -61,13 +61,35 @@ function resample(points, mode) {
   return out;
 }
 
+/**
+ * Props:
+ * - data: array of points
+ * - xKey: key for x axis (default "date")
+ *
+ * Single-series (legacy):
+ * - yKey: key for y values (default "value")
+ * - yLabel: label for tooltip (default "Value")
+ *
+ * Multi-series (new):
+ * - series: [{ key: "baseline", label: "Baseline" }, { key: "scenario", label: "Stressed" }]
+ *
+ * Optional:
+ * - linePropsByKey: { baseline: { strokeDasharray: "5 5" }, scenario: {...} }
+ *   (You don’t have to use this; it’s just a hook.)
+ */
 export default function LineChartCard({
   title,
   subtitle,
   data,
   xKey = "date",
+
+  // legacy single-series support
   yKey = "value",
   yLabel = "Value",
+
+  // multi-series support
+  series = [],
+  linePropsByKey = {},
 
   // formatting hooks
   xTickFormatter = defaultXTick,
@@ -81,11 +103,13 @@ export default function LineChartCard({
 }) {
   const [view, setView] = useState(defaultView);
 
+  const hasSeries = Array.isArray(series) && series.length > 0;
+
   const chartData = useMemo(() => {
     const pts = Array.isArray(data) ? data : [];
     if (view === "max") return pts;
-    return resample(pts, view);
-  }, [data, view]);
+    return resample(pts, view, xKey);
+  }, [data, view, xKey]);
 
   return (
     <div className="chart-card">
@@ -122,11 +146,46 @@ export default function LineChartCard({
               minTickGap={30}
             />
             <YAxis tickFormatter={yTickFormatter} />
+
             <Tooltip
               labelFormatter={tooltipLabelFormatter}
-              formatter={(value) => tooltipValueFormatter(value)}
+              formatter={(value, name, ctx) => {
+                // In multi-series mode, name will equal Line.name (label) if you set it.
+                if (hasSeries) {
+                  // ctx.dataKey is the true key (baseline/scenario)
+                  const key = ctx?.dataKey ?? name;
+                  const s = series.find((it) => it.key === key);
+                  const label = s?.label || name;
+
+                  const out = tooltipValueFormatter(value);
+                  return [out?.[0] ?? value, label];
+                }
+                return tooltipValueFormatter(value);
+              }}
             />
-            <Line type="monotone" dataKey={yKey} dot={false} strokeWidth={2} />
+
+            {hasSeries ? (
+              series.map((s) => (
+                <Line
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  dot={false}
+                  strokeWidth={2}
+                  stroke={s.color}
+                  name={s.label}
+                  {...(linePropsByKey?.[s.key] || {})}
+                />
+              ))
+            ) : (
+              <Line
+                type="monotone"
+                dataKey={yKey}
+                dot={false}
+                strokeWidth={2}
+              />
+            )}
+
             <Brush dataKey={xKey} height={25} travellerWidth={10} />
           </LineChart>
         </ResponsiveContainer>
