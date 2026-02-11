@@ -26,7 +26,7 @@ function mergeCurves(base = [], scen = []) {
   );
 }
 
-export default function EquityCurveCard({ analysis, stress }) {
+export default function EquityCurveCard({ analysis, stress, forecast }) {
   // Mode 1: stress overlay (preferred if present)
   const hasStress =
     stress?.baseline?.equity_curve?.length &&
@@ -42,14 +42,20 @@ export default function EquityCurveCard({ analysis, stress }) {
       );
     }
     if (hasAnalysis) {
-      // adapt existing shape {date, value} -> {date, baseline}
-      return analysis.equity_curve.map((p) => ({
+      const curve = forecast?.equity_curve || analysis.equity_curve;
+      return curve.map((p) => ({
         date: p.date,
         baseline: p.value,
       }));
     }
     return [];
-  }, [hasStress, hasAnalysis, stress, analysis]);
+  }, [hasStress, hasAnalysis, stress, analysis, forecast]);
+  console.log("EC data len", data.length);
+  console.log("EC first/last", data[0]?.date, data[data.length - 1]?.date);
+  console.log(
+    "EC last 5",
+    data.slice(-5).map((d) => d.date),
+  );
 
   if (!data.length) return null;
 

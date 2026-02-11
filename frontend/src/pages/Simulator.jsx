@@ -5,6 +5,7 @@ import EquityCurveCard from "../components/EquityCurveCard";
 import MetricsCard from "../components/MetricsCard";
 import { runPortfolioAnalysis } from "../services/runAnalysis";
 import { analyzeWithStress } from "../services/runStressAnalysis";
+import { runForecast } from "../services/runForecast";
 import ScenarioDeltasCard from "../components/ScenarioDeltasCard";
 
 function todayYYYYMMDD() {
@@ -33,10 +34,14 @@ export default function SimulatorPage() {
     drift_shift: -0.0005, // only used for regime_shift
   });
 
+  const [forecast, setForecast] = useState(null);
+  const [forecastDays, setForecastDays] = useState(30);
+
   async function handleRunAnalysis() {
     // For basic analysis
     setError("");
     setLoading(true);
+    setForecast(null); // Clear previous forecast results
     try {
       const result = await runPortfolioAnalysis({
         holdings,
@@ -55,6 +60,7 @@ export default function SimulatorPage() {
     // For stress testing
     setError("");
     setStress(null); // Clear previous results
+    setForecast(null); // Clear previous forecast results
     setStressLoading(true);
     try {
       const result = await analyzeWithStress({
@@ -68,6 +74,26 @@ export default function SimulatorPage() {
       setError(err.message || "Stress analysis failed.");
     } finally {
       setStressLoading(false);
+    }
+  }
+
+  async function handleRunForecast() {
+    console.log("RUN FORECAST CLICKED", {
+      analysisId: analysis?.analysis_id,
+      forecastDays,
+    });
+    try {
+      const result = await runForecast({
+        analysisId: analysis.analysis_id,
+        days: forecastDays,
+      });
+      setForecast(result);
+      console.log("analysis curve", analysis.equity_curve?.length);
+      console.log("forecast curve", result.equity_curve?.length);
+      console.log("forecast hist", result.historical_equity_curve?.length);
+      console.log("forecast fc", result.forecast_equity_curve?.length);
+    } catch (err) {
+      setError(err.message || "Forecast failed.");
     }
   }
 
@@ -87,7 +113,7 @@ export default function SimulatorPage() {
           <label style={{ display: "block", marginBottom: "0.4rem" }}>
             Start date
           </label>
-          <div className="panel-block">
+          <div className="panel-block date-inputs">
             <label style={{ display: "block", marginBottom: "0.4rem" }}>
               Start date
             </label>
@@ -119,6 +145,20 @@ export default function SimulatorPage() {
             {loading ? "Running..." : "Run Analysis"}
           </button>
           {error && <div className="text-danger">{error}</div>}
+
+          {/* Render forecast controls only if we have analysis results (need analysis_id) */}
+          {analysis && (
+            <div className="panel-block">
+              <label>Forecast days</label>
+              <input
+                type="number"
+                min={1}
+                value={forecastDays}
+                onChange={(e) => setForecastDays(Number(e.target.value))}
+              />
+              <button onClick={handleRunForecast}>Run Forecast</button>
+            </div>
+          )}
 
           {/* Stress test controls */}
           <div className="panel-block">
@@ -283,7 +323,11 @@ export default function SimulatorPage() {
 
           {/* Placeholder blocks */}
           {analysis || stress ? (
-            <EquityCurveCard analysis={analysis} stress={stress} />
+            <EquityCurveCard
+              analysis={analysis}
+              stress={stress}
+              forecast={forecast}
+            />
           ) : (
             <div className="panel-block">Equity curve</div>
           )}

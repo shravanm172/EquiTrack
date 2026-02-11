@@ -55,6 +55,7 @@ body {
 }
 
 button {
+  background-color: grey;
   color: white;
 }
 
@@ -97,6 +98,12 @@ button {
   margin-bottom: 1.2rem;
   font-size: 1.4rem;
   color: var(--text-secondary);
+}
+
+.date-inputs {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
 }
 
 /* ---------- Responsive ---------- */

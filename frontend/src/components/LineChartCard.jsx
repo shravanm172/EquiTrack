@@ -1,6 +1,6 @@
 // Base Template for Line Charts (supports 1+ series)
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -71,11 +71,7 @@ function resample(points, mode, xKey = "date") {
  * - yLabel: label for tooltip (default "Value")
  *
  * Multi-series (new):
- * - series: [{ key: "baseline", label: "Baseline" }, { key: "scenario", label: "Stressed" }]
- *
- * Optional:
- * - linePropsByKey: { baseline: { strokeDasharray: "5 5" }, scenario: {...} }
- *   (You don’t have to use this; it’s just a hook.)
+ * - series: [{ key: "baseline", label: "Baseline" }, ...]
  */
 export default function LineChartCard({
   title,
@@ -102,6 +98,7 @@ export default function LineChartCard({
   allowViews = ["daily", "weekly", "monthly", "max"],
 }) {
   const [view, setView] = useState(defaultView);
+  const [brush, setBrush] = useState({ startIndex: 0, endIndex: 0 });
 
   const hasSeries = Array.isArray(series) && series.length > 0;
 
@@ -110,6 +107,20 @@ export default function LineChartCard({
     if (view === "max") return pts;
     return resample(pts, view, xKey);
   }, [data, view, xKey]);
+
+  useEffect(() => {
+    const n = chartData.length;
+    if (!n) return;
+    setBrush({ startIndex: 0, endIndex: n - 1 });
+  }, [chartData.length]); // IMPORTANT: depend on length
+
+  // ✅ Force FULL remount when the data range changes (fixes stale domain/brush)
+  const chartKey = useMemo(() => {
+    if (!chartData.length) return "empty";
+    const first = String(chartData[0]?.[xKey] ?? "");
+    const last = String(chartData[chartData.length - 1]?.[xKey] ?? "");
+    return `${view}__${first}__${last}__${chartData.length}`;
+  }, [chartData, xKey, view]);
 
   return (
     <div className="chart-card">
@@ -136,6 +147,7 @@ export default function LineChartCard({
       <div className="chart-area">
         <ResponsiveContainer width="100%" height={320}>
           <LineChart
+            key={chartKey} // ✅ THIS is the important part
             data={chartData}
             margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
           >
@@ -150,9 +162,7 @@ export default function LineChartCard({
             <Tooltip
               labelFormatter={tooltipLabelFormatter}
               formatter={(value, name, ctx) => {
-                // In multi-series mode, name will equal Line.name (label) if you set it.
                 if (hasSeries) {
-                  // ctx.dataKey is the true key (baseline/scenario)
                   const key = ctx?.dataKey ?? name;
                   const s = series.find((it) => it.key === key);
                   const label = s?.label || name;
@@ -186,7 +196,18 @@ export default function LineChartCard({
               />
             )}
 
-            <Brush dataKey={xKey} height={25} travellerWidth={10} />
+            <Brush
+              dataKey={xKey}
+              startIndex={brush.startIndex}
+              endIndex={brush.endIndex}
+              onChange={(r) => {
+                if (!r) return;
+                setBrush({
+                  startIndex: r.startIndex ?? 0,
+                  endIndex: r.endIndex ?? chartData.length - 1,
+                });
+              }}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
