@@ -1,16 +1,107 @@
 from typing import Any
 import pandas as pd
 
-
-
 from services.store_singleton import analysis_store
 from engines.analytics_engine import equity_curve
 
 
-def _forecast_from_returns_mean(
+def _estimate_drift(
+    port_r: pd.Series,
+    mode: str,
+    *,
+    window: int | None = None,
+    alpha: float | None = None,
+    lam: float | None = None,   
+) -> tuple[float, dict[str, Any]]:
+    """
+    Estimate drift (mean return) from portfolio returns using specified method.
+
+    Returns:
+      r_hat: float drift estimate (daily)
+      trend_meta: dict to include in response["trend"]
+    """
+    mode = (mode or "").strip().lower()
+
+    if mode == "mean":
+        r_hat = float(port_r.mean())
+        return r_hat, {"mode": "mean", "mean_daily_return": r_hat}
+
+    if mode == "rolling":
+        if window is None:
+            window = 60  # default
+
+        try:
+            window = int(window)
+        except Exception:
+            raise ValueError("forecast.window must be an integer for mode='rolling'.")
+
+        if window <= 0:
+            raise ValueError("forecast.window must be > 0 for mode='rolling'.")
+
+        if len(port_r) < window:
+            raise ValueError(
+                f"Not enough return data for rolling window (need {window}, have {len(port_r)})."
+            )
+
+        r_hat = float(port_r.iloc[-window:].mean())
+        return r_hat, {"mode": "rolling", "window": window, "mean_daily_return": r_hat}
+
+    if mode == "ewma":
+        # Allow either alpha or lambda, with sensible defaults
+        # RiskMetrics daily default lambda=0.94 => alpha=0.06
+        if alpha is None and lam is None:
+            lam = 0.94
+
+        # If alpha provided, it wins; otherwise derive from lambda
+        if alpha is not None:
+            try:
+                alpha = float(alpha)
+            except Exception:
+                raise ValueError("forecast.alpha must be a number for mode='ewma'.")
+            if not (0.0 < alpha < 1.0):
+                raise ValueError("forecast.alpha must be in (0, 1) for mode='ewma'.")
+            lam = 1.0 - alpha
+        else:
+            try:
+                lam = float(lam)
+            except Exception:
+                raise ValueError("forecast.lambda must be a number for mode='ewma'.")
+            if not (0.0 < lam < 1.0):
+                raise ValueError("forecast.lambda must be in (0, 1) for mode='ewma'.")
+            alpha = 1.0 - lam
+
+        # EWMA recursion: mu_t = alpha*r_t + (1-alpha)*mu_{t-1}
+        # We'll seed mu_0 as the first return (common/simple).
+        s = port_r.dropna()
+        if s.empty:
+            raise ValueError("Not enough return data to forecast (portfolio returns empty).")
+
+        mu = float(s.iloc[0])
+        one_minus_alpha = 1.0 - float(alpha)
+        for r in s.iloc[1:]:
+            mu = float(alpha) * float(r) + one_minus_alpha * mu
+
+        r_hat = float(mu)
+        return r_hat, {
+            "mode": "ewma",
+            "alpha": float(alpha),
+            "lambda": float(lam),
+            "mean_daily_return": r_hat,
+        }
+
+    raise ValueError("forecast.mode must be 'mean', 'rolling', or 'ewma'.")
+
+
+
+def _forecast_from_returns(
     port_r: pd.Series,
     starting_cash: float,
     forecast_days: int,
+    *,
+    mode: str = "mean",
+    window: int | None = None,
+    alpha: float | None = None,
+    lam: float | None = None,
 ) -> dict[str, Any]:
     if forecast_days <= 0:
         raise ValueError("forecast_days must be > 0")
@@ -23,7 +114,7 @@ def _forecast_from_returns_mean(
     if not isinstance(hist_curve, pd.Series):
         raise TypeError("equity_curve must return a pandas Series.")
 
-    r_hat = float(port_r.mean())
+    r_hat, trend_meta = _estimate_drift(port_r, mode, window=window, alpha=alpha, lam=lam)
 
     last_date = hist_curve.index[-1]
     future_idx = pd.bdate_range(last_date + pd.Timedelta(days=1), periods=forecast_days)
@@ -37,12 +128,21 @@ def _forecast_from_returns_mean(
     forecast_curve = pd.Series(vals, index=future_idx)
     combined = pd.concat([hist_curve, forecast_curve])
 
-    hist_json = [{"date": i.strftime("%Y-%m-%d"), "value": round(float(v), 2)} for i, v in hist_curve.items()]
-    fc_json = [{"date": i.strftime("%Y-%m-%d"), "value": round(float(v), 2)} for i, v in forecast_curve.items()]
-    combined_json = [{"date": i.strftime("%Y-%m-%d"), "value": round(float(v), 2)} for i, v in combined.items()]
+    hist_json = [
+        {"date": i.strftime("%Y-%m-%d"), "value": round(float(v), 2)}
+        for i, v in hist_curve.items()
+    ]
+    fc_json = [
+        {"date": i.strftime("%Y-%m-%d"), "value": round(float(v), 2)}
+        for i, v in forecast_curve.items()
+    ]
+    combined_json = [
+        {"date": i.strftime("%Y-%m-%d"), "value": round(float(v), 2)}
+        for i, v in combined.items()
+    ]
 
     return {
-        "trend": {"mode": "mean", "mean_daily_return": r_hat},
+        "trend": trend_meta,
         "historical_equity_curve": hist_json,
         "forecast_equity_curve": fc_json,
         "equity_curve": combined_json,  # combined for plotting
@@ -57,8 +157,13 @@ def forecast_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
     forecast_cfg = payload.get("forecast", {}) or {}
     forecast_days = int(forecast_cfg.get("days", 30))
     mode = str(forecast_cfg.get("mode", "mean")).strip().lower()
-    if mode != "mean":
-        raise ValueError("Only forecast.mode='mean' is supported right now.")
+
+    # rolling-specific param
+    window = forecast_cfg.get("window", None)
+
+    # ewma specific params
+    alpha = forecast_cfg.get("alpha", None)
+    lam = forecast_cfg.get("lambda", None)
 
     # For shock analyses, user chooses baseline vs scenario
     source = str(payload.get("source", "baseline")).strip().lower()
@@ -76,23 +181,39 @@ def forecast_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
         starting_cash = float(item["inputs"]["starting_cash"])
 
     elif kind == "analyze_shock":
-        if source == "baseline":
-            port_r = item["baseline_returns"]
-        else:
-            port_r = item["scenario_returns"]
-        # starting_cash is the same for both
+        port_r = item["baseline_returns"] if source == "baseline" else item["scenario_returns"]
         starting_cash = float(item["inputs"]["starting_cash"])
 
     else:
         raise ValueError(f"Unsupported cached analysis kind: {kind}")
 
-    forecast_out = _forecast_from_returns_mean(port_r, starting_cash, forecast_days)
+    forecast_out = _forecast_from_returns(
+        port_r,
+        starting_cash,
+        forecast_days,
+        mode=mode,
+        window=window,
+        alpha=alpha,
+        lam=lam,
+    )
+
+    # echo back what was used
+    inputs_forecast = {"days": forecast_days, "mode": mode}
+    if mode == "rolling" and window is not None:
+        inputs_forecast["window"] = int(window)
+    if mode == "ewma":
+        if alpha is not None: # prefers alpha
+            inputs_forecast["alpha"] = float(alpha)
+        elif lam is not None:
+            inputs_forecast["lambda"] = float(lam)
+        else:
+            inputs_forecast["lambda"] = 0.94  # default
 
     return {
         "inputs": {
             "analysis_id": analysis_id,
             "source": source,
-            "forecast": {"days": forecast_days, "mode": "mean"},
+            "forecast": inputs_forecast,
         },
         **forecast_out,
     }

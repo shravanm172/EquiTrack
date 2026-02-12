@@ -26,7 +26,12 @@ function mergeCurves(base = [], scen = []) {
   );
 }
 
-export default function EquityCurveCard({ analysis, stress, forecast }) {
+export default function EquityCurveCard({
+  analysis,
+  stress,
+  forecast,
+  stressForecast,
+}) {
   // Mode 1: stress overlay (preferred if present)
   const hasStress =
     stress?.baseline?.equity_curve?.length &&
@@ -36,11 +41,16 @@ export default function EquityCurveCard({ analysis, stress, forecast }) {
 
   const data = useMemo(() => {
     if (hasStress) {
-      return mergeCurves(
-        stress.baseline.equity_curve,
-        stress.scenario.equity_curve,
-      );
+      // ✅ Prefer forecasted (combined) curves if available, else fall back to historical stress curves
+      const baseCurve =
+        stressForecast?.baseline?.equity_curve || stress.baseline.equity_curve;
+
+      const scenCurve =
+        stressForecast?.scenario?.equity_curve || stress.scenario.equity_curve;
+
+      return mergeCurves(baseCurve, scenCurve);
     }
+
     if (hasAnalysis) {
       const curve = forecast?.equity_curve || analysis.equity_curve;
       return curve.map((p) => ({
@@ -48,8 +58,10 @@ export default function EquityCurveCard({ analysis, stress, forecast }) {
         baseline: p.value,
       }));
     }
+
     return [];
-  }, [hasStress, hasAnalysis, stress, analysis, forecast]);
+  }, [hasStress, hasAnalysis, stress, analysis, forecast, stressForecast]);
+
   console.log("EC data len", data.length);
   console.log("EC first/last", data[0]?.date, data[data.length - 1]?.date);
   console.log(
@@ -70,7 +82,7 @@ export default function EquityCurveCard({ analysis, stress, forecast }) {
       ? `Valued as of ${asOf}`
       : undefined;
 
-  const series = hasStress // <-- here is the series
+  const series = hasStress
     ? [
         { key: "baseline", label: "Baseline", color: "#4ea1ff" },
         { key: "scenario", label: "Stressed", color: "#ff6b6b" },

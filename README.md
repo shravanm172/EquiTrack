@@ -11,8 +11,8 @@ The project is intentionally built as an evolving system: today it focuses on de
 
 ### Portfolio Analytics
 
-- Portfolio defined as a set of tickers and weights  
-  Weights may be provided directly by the user or derived from user-specified share counts using market prices on the portfolio start date.
+- Portfolio defined as a set of tickers and weights/shares 
+  Weights derived from user-specified share counts using market prices on the analysis start date.
 - Real historical price data fetched over a user-defined date range
 - Analysis pipeline:
   1. Prices → daily returns  
@@ -62,9 +62,7 @@ The React dashboard provides dynamic stress configuration:
   - Permanent / Linear Rebound → Shock %
   - Linear Rebound → Rebound days
   - Regime Shift → Volatility multiplier + Drift shift
-- Shock % is ignored for regime shift scenarios
 
-The UI dynamically renders only relevant controls based on selected scenario type, preventing invalid parameter combinations.
 
 ---
 
@@ -84,7 +82,7 @@ For stress testing, EquiTrack:
 
 ### Equity Curve Overlay Visualization
 
-The frontend now supports multi-series equity curve visualization:
+The frontend supports multi-series equity curve visualization:
 
 - Baseline and stressed curves plotted on the **same chart**
 - Distinct colors for visual comparison
@@ -102,8 +100,6 @@ This enables intuitive visual comparison between historical and stressed market 
 
 ## Architecture Overview
 
-The system is deliberately modular and scalable.
-
 ### `analysis_service`
 - Core deterministic analytics engine
 - Given prices → computes:
@@ -114,7 +110,7 @@ The system is deliberately modular and scalable.
 ### `scenario_engine`
 - Defines market scenarios as transformations
 - Operates only on prices or returns
-- Current implementations:
+- Current scenarios:
   - permanent shock
   - linear rebound shock
   - volatility + drift regime shift
@@ -146,7 +142,6 @@ Returns:
 - scenario results
 - delta metrics (scenario − baseline)
 
-Scenarios are selected via request payload configuration.
 
 ---
 
@@ -160,10 +155,7 @@ Scenarios are selected via request payload configuration.
 
 ### Frontend
 - React (Vite)
-- Recharts for visualization
-- Dynamic scenario configuration UI
-- Multi-series equity curve overlay
-- Interactive dashboard layout
+- Recharts for data visualization
 
 ### CI/CD (planned)
 - GitHub-integrated deployment (Vercel + Render)
@@ -182,6 +174,8 @@ python -m venv venv
 
 
 ## Test Suite
+Includes integration and unit tests for backend validation of major use cases with pytest
+
 - test_build_and_analyze_portfolio_integration
     - test_analyze_from_prices_integration
         - test_prices_to_returns

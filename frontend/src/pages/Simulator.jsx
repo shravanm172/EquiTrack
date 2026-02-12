@@ -35,13 +35,19 @@ export default function SimulatorPage() {
   });
 
   const [forecast, setForecast] = useState(null);
+  const [stressForecast, setStressForecast] = useState(null);
   const [forecastDays, setForecastDays] = useState(30);
+  const [forecastMode, setForecastMode] = useState("mean"); // "mean" | "rolling"
+  const [rollingWindow, setRollingWindow] = useState(60);
+  const [ewmaLambda, setEwmaLambda] = useState(0.94);
 
   async function handleRunAnalysis() {
     // For basic analysis
     setError("");
     setLoading(true);
     setForecast(null); // Clear previous forecast results
+    setStress(null);
+    setStressForecast(null);
     try {
       const result = await runPortfolioAnalysis({
         holdings,
@@ -60,6 +66,7 @@ export default function SimulatorPage() {
     // For stress testing
     setError("");
     setStress(null); // Clear previous results
+    setStressForecast(null);
     setForecast(null); // Clear previous forecast results
     setStressLoading(true);
     try {
@@ -78,14 +85,19 @@ export default function SimulatorPage() {
   }
 
   async function handleRunForecast() {
-    console.log("RUN FORECAST CLICKED", {
-      analysisId: analysis?.analysis_id,
-      forecastDays,
-    });
+    setError("");
+    setStressForecast(null);
+    if (!analysis?.analysis_id) {
+      setError("Run analysis first.");
+      return;
+    }
     try {
       const result = await runForecast({
         analysisId: analysis.analysis_id,
         days: forecastDays,
+        mode: forecastMode,
+        window: forecastMode === "rolling" ? rollingWindow : undefined,
+        lambda: forecastMode === "ewma" ? ewmaLambda : undefined,
       });
       setForecast(result);
       console.log("analysis curve", analysis.equity_curve?.length);
@@ -94,6 +106,41 @@ export default function SimulatorPage() {
       console.log("forecast fc", result.forecast_equity_curve?.length);
     } catch (err) {
       setError(err.message || "Forecast failed.");
+    }
+  }
+
+  async function handleRunStressForecast() {
+    setError("");
+    setForecast(null);
+
+    try {
+      // IMPORTANT: use the stress analysis_id (the one stored in analysis_store for kind="analyze_shock")
+      const stressId = stress?.analysis_id || stress?.inputs?.analysis_id;
+      if (!stressId)
+        throw new Error("Stress analysis_id missing. Re-run stress test.");
+
+      const [baselineFc, scenarioFc] = await Promise.all([
+        runForecast({
+          analysisId: stressId,
+          days: forecastDays,
+          source: "baseline",
+          mode: forecastMode,
+          window: forecastMode === "rolling" ? rollingWindow : undefined,
+          lambda: forecastMode === "ewma" ? ewmaLambda : undefined,
+        }),
+        runForecast({
+          analysisId: stressId,
+          days: forecastDays,
+          source: "scenario",
+          mode: forecastMode,
+          window: forecastMode === "rolling" ? rollingWindow : undefined,
+          lambda: forecastMode === "ewma" ? ewmaLambda : undefined,
+        }),
+      ]);
+
+      setStressForecast({ baseline: baselineFc, scenario: scenarioFc });
+    } catch (err) {
+      setError(err.message || "Stress forecast failed.");
     }
   }
 
@@ -156,6 +203,51 @@ export default function SimulatorPage() {
                 value={forecastDays}
                 onChange={(e) => setForecastDays(Number(e.target.value))}
               />
+
+              <label style={{ marginTop: "0.6rem" }}>Mode</label>
+              <select
+                value={forecastMode}
+                onChange={(e) => setForecastMode(e.target.value)}
+              >
+                <option value="mean">Mean (full sample)</option>
+                <option value="rolling">Rolling mean</option>
+                <option value="ewma">EWMA</option>
+              </select>
+
+              {forecastMode === "rolling" && (
+                <>
+                  <label style={{ marginTop: "0.6rem" }}>
+                    Rolling window (days)
+                  </label>
+                  <input
+                    type="number"
+                    min={2}
+                    step={1}
+                    value={rollingWindow}
+                    onChange={(e) => setRollingWindow(Number(e.target.value))}
+                  />
+                </>
+              )}
+
+              {forecastMode === "ewma" && (
+                <>
+                  <label style={{ marginTop: "0.6rem" }}>
+                    EWMA lambda (0–1)
+                  </label>
+                  <input
+                    type="number"
+                    min={0.001}
+                    max={0.999}
+                    step={0.01}
+                    value={ewmaLambda}
+                    onChange={(e) => setEwmaLambda(Number(e.target.value))}
+                  />
+                  <div className="text-muted" style={{ marginTop: "0.25rem" }}>
+                    Higher λ = more weight on recent returns. Default 0.94.
+                  </div>
+                </>
+              )}
+
               <button onClick={handleRunForecast}>Run Forecast</button>
             </div>
           )}
@@ -312,6 +404,64 @@ export default function SimulatorPage() {
               {stressLoading ? "Running..." : "Run Stress Test"}
             </button>
           </div>
+
+          {stress && (
+            <div className="panel-block">
+              <label>Forecast days</label>
+              <input
+                type="number"
+                min={1}
+                value={forecastDays}
+                onChange={(e) => setForecastDays(Number(e.target.value))}
+              />
+
+              <label style={{ marginTop: "0.6rem" }}>Mode</label>
+              <select
+                value={forecastMode}
+                onChange={(e) => setForecastMode(e.target.value)}
+              >
+                <option value="mean">Mean (full sample)</option>
+                <option value="rolling">Rolling mean</option>
+                <option value="ewma">EWMA</option>
+              </select>
+
+              {forecastMode === "rolling" && (
+                <>
+                  <label style={{ marginTop: "0.6rem" }}>
+                    Rolling window (days)
+                  </label>
+                  <input
+                    type="number"
+                    min={2}
+                    step={1}
+                    value={rollingWindow}
+                    onChange={(e) => setRollingWindow(Number(e.target.value))}
+                  />
+                </>
+              )}
+
+              {forecastMode === "ewma" && (
+                <>
+                  <label style={{ marginTop: "0.6rem" }}>
+                    EWMA lambda (0–1)
+                  </label>
+                  <input
+                    type="number"
+                    min={0.001}
+                    max={0.999}
+                    step={0.01}
+                    value={ewmaLambda}
+                    onChange={(e) => setEwmaLambda(Number(e.target.value))}
+                  />
+                  <div className="text-muted" style={{ marginTop: "0.25rem" }}>
+                    Higher λ = more weight on recent returns. Default 0.94.
+                  </div>
+                </>
+              )}
+
+              <button onClick={handleRunStressForecast}>Run Forecast</button>
+            </div>
+          )}
         </section>
 
         {/* Right Panel: Charts and Metrics */}
@@ -327,6 +477,7 @@ export default function SimulatorPage() {
               analysis={analysis}
               stress={stress}
               forecast={forecast}
+              stressForecast={stressForecast}
             />
           ) : (
             <div className="panel-block">Equity curve</div>
