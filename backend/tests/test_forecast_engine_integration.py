@@ -3,6 +3,7 @@ import pytest
 
 from engines import forecast_engine as fe
 from services.store_singleton import analysis_store
+from engines.analytics_engine import forecast_summary
 
 
 @pytest.fixture
@@ -180,7 +181,7 @@ def test_forecast_from_returns_ewma_alpha_computes_expected_drift():
 
 def test_forecast_from_returns_ewma_defaults_lambda(port_returns_uptrend):
     out = fe._forecast_from_returns(
-        port_r=port_returns_uptrend,   # now this is the Series
+        port_r=port_returns_uptrend,  
         starting_cash=100_000.0,
         forecast_days=3,
         mode="ewma",
@@ -356,3 +357,55 @@ def test_forecast_endpoint_ewma_defaults_lambda(client, port_returns_mixed):
     assert out["trend"]["lambda"] == pytest.approx(0.94, abs=1e-12)
     assert out["inputs"]["forecast"]["mode"] == "ewma"
     assert out["inputs"]["forecast"]["lambda"] == pytest.approx(0.94, abs=1e-12)
+
+
+def _make_curve(start_date: str, values: list[float]) -> pd.Series:
+    idx = pd.bdate_range(start_date, periods=len(values))
+    return pd.Series(values, index=idx, name="equity")
+
+
+def test_forecast_summary_basic_fields_and_math():
+    # Last historical value = 100, forecast goes 110, 121, 133.1 (10% daily)
+    hist = _make_curve("2025-01-01", [90.0, 100.0])
+    fc = _make_curve("2025-01-03", [110.0, 121.0, 133.1])
+
+    trend = {"mode": "mean", "mean_daily_return": 0.10}
+    out = forecast_summary(hist_curve=hist, forecast_curve=fc, trend=trend, target_multiple=1.10)
+
+    # Shape
+    expected_keys = {
+        "last_historical_value",
+        "forecast_end_value",
+        "forecast_abs_change",
+        "forecast_total_return",
+        "forecast_avg_daily_return",
+        "days_to_target_multiple",
+        "target_multiple",
+        "trend",
+    }
+    assert expected_keys.issubset(out.keys())
+
+    assert out["last_historical_value"] == pytest.approx(100.00, abs=1e-9)
+    assert out["forecast_end_value"] == pytest.approx(133.10, abs=1e-9)
+
+    # total return should be (end / last_hist) - 1
+    expected_total = (133.1 / 100.0) - 1.0
+    assert out["forecast_total_return"] == pytest.approx(expected_total, abs=1e-6)
+
+    # abs change should be end - last_hist
+    assert out["forecast_abs_change"] == pytest.approx(33.10, abs=1e-9)
+
+    # target_multiple 1.10 should be hit on the first forecast day (110)
+    assert out["target_multiple"] == pytest.approx(1.10, abs=1e-12)
+    assert out["days_to_target_multiple"] == 1
+
+    # trend passthrough
+    assert out["trend"]["mode"] == "mean"
+
+
+def test_forecast_summary_days_to_target_none_when_never_hit():
+    hist = _make_curve("2025-01-01", [100.0])
+    fc = _make_curve("2025-01-02", [101.0, 102.0, 103.0])
+
+    out = forecast_summary(hist_curve=hist, forecast_curve=fc, target_multiple=1.10)
+    assert out["days_to_target_multiple"] is None

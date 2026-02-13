@@ -3,6 +3,7 @@ import pandas as pd
 
 from services.store_singleton import analysis_store
 from engines.analytics_engine import equity_curve
+from engines.analytics_engine import forecast_summary
 
 
 def _estimate_drift(
@@ -141,8 +142,16 @@ def _forecast_from_returns(
         for i, v in combined.items()
     ]
 
+    summary = forecast_summary(
+        hist_curve=hist_curve,
+        forecast_curve=forecast_curve,
+        trend=trend_meta,          # optional but nice for UI
+        target_multiple=1.10,      # optional default
+    )
+
     return {
         "trend": trend_meta,
+        "summary": summary,  
         "historical_equity_curve": hist_json,
         "forecast_equity_curve": fc_json,
         "equity_curve": combined_json,  # combined for plotting

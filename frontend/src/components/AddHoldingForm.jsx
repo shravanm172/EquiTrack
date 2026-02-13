@@ -8,6 +8,10 @@ function isYYYYMMDD(s) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
+function todayYYYYMMDD() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function isFutureDate(dateStr) {
   // Compare by date-only (local). "Today" is allowed.
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -20,7 +24,7 @@ function isFutureDate(dateStr) {
 export default function AddHoldingForm({ holdings, setHoldings }) {
   const [ticker, setTicker] = useState("");
   const [shares, setShares] = useState("");
-  const [buyDate, setBuyDate] = useState("");
+  const [buyDate, setBuyDate] = useState(todayYYYYMMDD());
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
@@ -120,7 +124,7 @@ export default function AddHoldingForm({ holdings, setHoldings }) {
       // Reset form fields
       setTicker("");
       setShares("");
-      // setBuyDate(""); // optional
+      setBuyDate(todayYYYYMMDD());
     } catch (err) {
       setError(err.message || "Validation failed.");
     } finally {
@@ -132,7 +136,7 @@ export default function AddHoldingForm({ holdings, setHoldings }) {
     <form onSubmit={handleSubmit} className="panel-block">
       <h4 style={{ marginTop: 0 }}>Add Holding</h4>
 
-      <div style={{ display: "grid", gap: "0.8rem" }}>
+      <div className="add-holding-form">
         <input
           placeholder="Ticker (e.g. AAPL)"
           value={ticker}
@@ -154,7 +158,11 @@ export default function AddHoldingForm({ holdings, setHoldings }) {
           onChange={(e) => setBuyDate(e.target.value)}
         />
 
-        <button type="submit" disabled={!canSubmit || loading}>
+        <button
+          type="submit"
+          disabled={!canSubmit || loading}
+          className="secondary-btn"
+        >
           {loading ? "Validating..." : "Add Holding"}
         </button>
 

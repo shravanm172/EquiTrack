@@ -31,6 +31,45 @@ function defaultTooltipLabel(iso) {
   });
 }
 
+function DefaultTooltipContent({
+  active,
+  label,
+  payload,
+  labelFormatter,
+  valueFormatter,
+  series,
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const formattedLabel = labelFormatter ? labelFormatter(label) : String(label);
+
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip__label">{formattedLabel}</div>
+
+      <div className="chart-tooltip__rows">
+        {payload.map((p) => {
+          const key = p.dataKey;
+          const s = Array.isArray(series)
+            ? series.find((it) => it.key === key)
+            : null;
+          const displayName = s?.label || p.name || key;
+
+          const out = valueFormatter ? valueFormatter(p.value) : [p.value];
+          const displayValue = Array.isArray(out) ? out[0] : out;
+
+          return (
+            <div className="chart-tooltip__row" key={key}>
+              <span className="chart-tooltip__name">{displayName}</span>
+              <span className="chart-tooltip__value">{displayValue}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Keep last point per bucket
 function resample(points, mode, xKey = "date") {
   if (!Array.isArray(points) || points.length === 0) return [];
@@ -160,18 +199,17 @@ export default function LineChartCard({
             <YAxis tickFormatter={yTickFormatter} />
 
             <Tooltip
-              labelFormatter={tooltipLabelFormatter}
-              formatter={(value, name, ctx) => {
-                if (hasSeries) {
-                  const key = ctx?.dataKey ?? name;
-                  const s = series.find((it) => it.key === key);
-                  const label = s?.label || name;
-
-                  const out = tooltipValueFormatter(value);
-                  return [out?.[0] ?? value, label];
-                }
-                return tooltipValueFormatter(value);
-              }}
+              content={
+                <DefaultTooltipContent
+                  labelFormatter={tooltipLabelFormatter}
+                  valueFormatter={(v) => {
+                    // preserve your existing single-series formatting contract
+                    const out = tooltipValueFormatter(v);
+                    return [out?.[0] ?? v];
+                  }}
+                  series={hasSeries ? series : []}
+                />
+              }
             />
 
             {hasSeries ? (

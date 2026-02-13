@@ -3,10 +3,13 @@ import Portfolio from "../components/Portfolio";
 import AddHoldingForm from "../components/AddHoldingForm";
 import EquityCurveCard from "../components/EquityCurveCard";
 import MetricsCard from "../components/MetricsCard";
+import ForecastSummaryCard from "../components/ForecastSummaryCard";
 import { runPortfolioAnalysis } from "../services/runAnalysis";
 import { analyzeWithStress } from "../services/runStressAnalysis";
 import { runForecast } from "../services/runForecast";
-import ScenarioDeltasCard from "../components/ScenarioDeltasCard";
+import StressControls from "../components/StressControls";
+import ForecastControls from "../components/ForecastControls";
+import AnalyticsPanel from "../components/AnalyticsPanel";
 
 function todayYYYYMMDD() {
   return new Date().toISOString().slice(0, 10);
@@ -37,14 +40,26 @@ export default function SimulatorPage() {
   const [forecast, setForecast] = useState(null);
   const [stressForecast, setStressForecast] = useState(null);
   const [forecastDays, setForecastDays] = useState(30);
-  const [forecastMode, setForecastMode] = useState("mean"); // "mean" | "rolling"
+  const [forecastMode, setForecastMode] = useState("mean"); // "mean" | "rolling" | "ewma"
   const [rollingWindow, setRollingWindow] = useState(60);
   const [ewmaLambda, setEwmaLambda] = useState(0.94);
+
+  function removeHolding(id) {
+    // for portfolio
+    setHoldings((prev) => prev.filter((h) => h.id !== id));
+
+    // Optional but recommended: clear results
+    setAnalysis(null);
+    setStress(null);
+    setForecast(null);
+    setStressForecast(null);
+  }
 
   async function handleRunAnalysis() {
     // For basic analysis
     setError("");
     setLoading(true);
+    setAnalysis(null);
     setForecast(null); // Clear previous forecast results
     setStress(null);
     setStressForecast(null);
@@ -68,6 +83,7 @@ export default function SimulatorPage() {
     setStress(null); // Clear previous results
     setStressForecast(null);
     setForecast(null); // Clear previous forecast results
+    setAnalysis(null);
     setStressLoading(true);
     try {
       const result = await analyzeWithStress({
@@ -150,328 +166,108 @@ export default function SimulatorPage() {
         {/* Left Panel: Portfolio / Controls */}
         <section className="simulator-panel input-panel">
           <h2>Portfolio</h2>
-          <p className="text-muted">Build your portfolio and run analysis.</p>
+          {/* <p className="text-muted">Build your portfolio and run analysis.</p> */}
 
-          {/* Placeholder blocks */}
-          <Portfolio holdings={holdings} />
+          <Portfolio holdings={holdings} onRemove={removeHolding} />
           <AddHoldingForm holdings={holdings} setHoldings={setHoldings} />
-          {/* Dates (start pinned) */}
 
           <label style={{ display: "block", marginBottom: "0.4rem" }}>
-            Start date
+            Portfolio Analysis
           </label>
-          <div className="panel-block date-inputs">
+          <div className="panel-block">
             <label style={{ display: "block", marginBottom: "0.4rem" }}>
-              Start date
+              Analysis Window
             </label>
-            <input
-              type="date"
-              max={today}
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
+            <div className="date-inputs">
+              <label style={{ display: "block", marginBottom: "0.4rem" }}>
+                Start
+              </label>
+              <input
+                type="date"
+                max={today}
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
 
-            <label
-              style={{
-                display: "block",
-                marginTop: "0.8rem",
-                marginBottom: "0.4rem",
-              }}
+              <label
+                style={{
+                  display: "block",
+                  marginTop: "0.8rem",
+                  marginBottom: "0.4rem",
+                }}
+              >
+                End{" "}
+              </label>
+              <input
+                type="date"
+                min={startDate || undefined}
+                max={today}
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+            <button
+              onClick={handleRunAnalysis}
+              disabled={loading}
+              className="primary-btn"
             >
-              End date
-            </label>
-            <input
-              type="date"
-              min={startDate || undefined}
-              max={today}
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
+              {loading ? "Running..." : "Analyze Portfolio"}
+            </button>
+            {error && <div className="text-danger">{error}</div>}
           </div>
-          <button onClick={handleRunAnalysis} disabled={loading}>
-            {loading ? "Running..." : "Run Analysis"}
-          </button>
-          {error && <div className="text-danger">{error}</div>}
 
           {/* Render forecast controls only if we have analysis results (need analysis_id) */}
           {analysis && (
-            <div className="panel-block">
-              <label>Forecast days</label>
-              <input
-                type="number"
-                min={1}
-                value={forecastDays}
-                onChange={(e) => setForecastDays(Number(e.target.value))}
-              />
-
-              <label style={{ marginTop: "0.6rem" }}>Mode</label>
-              <select
-                value={forecastMode}
-                onChange={(e) => setForecastMode(e.target.value)}
-              >
-                <option value="mean">Mean (full sample)</option>
-                <option value="rolling">Rolling mean</option>
-                <option value="ewma">EWMA</option>
-              </select>
-
-              {forecastMode === "rolling" && (
-                <>
-                  <label style={{ marginTop: "0.6rem" }}>
-                    Rolling window (days)
-                  </label>
-                  <input
-                    type="number"
-                    min={2}
-                    step={1}
-                    value={rollingWindow}
-                    onChange={(e) => setRollingWindow(Number(e.target.value))}
-                  />
-                </>
-              )}
-
-              {forecastMode === "ewma" && (
-                <>
-                  <label style={{ marginTop: "0.6rem" }}>
-                    EWMA lambda (0–1)
-                  </label>
-                  <input
-                    type="number"
-                    min={0.001}
-                    max={0.999}
-                    step={0.01}
-                    value={ewmaLambda}
-                    onChange={(e) => setEwmaLambda(Number(e.target.value))}
-                  />
-                  <div className="text-muted" style={{ marginTop: "0.25rem" }}>
-                    Higher λ = more weight on recent returns. Default 0.94.
-                  </div>
-                </>
-              )}
-
-              <button onClick={handleRunForecast}>Run Forecast</button>
-            </div>
+            <ForecastControls
+              forecastDays={forecastDays}
+              setForecastDays={setForecastDays}
+              forecastMode={forecastMode}
+              setForecastMode={setForecastMode}
+              rollingWindow={rollingWindow}
+              setRollingWindow={setRollingWindow}
+              ewmaLambda={ewmaLambda}
+              setEwmaLambda={setEwmaLambda}
+              onRun={handleRunForecast}
+              buttonLabel="Run Forecast"
+            />
           )}
 
           {/* Stress test controls */}
-          <div className="panel-block">
-            <h3 style={{ marginTop: 0 }}>Stress test controls</h3>
-
-            {/* Shock date (always required) */}
-            <label style={{ display: "block", marginBottom: "0.4rem" }}>
-              Shock date
-            </label>
-            <input
-              type="date"
-              min={startDate || undefined}
-              max={endDate || today}
-              value={shock.date}
-              onChange={(e) =>
-                setShock((s) => ({ ...s, date: e.target.value }))
-              }
-            />
-
-            {/* Shock type (always) */}
-            <label
-              style={{
-                display: "block",
-                marginTop: "0.8rem",
-                marginBottom: "0.4rem",
-              }}
-            >
-              Type
-            </label>
-            <select
-              value={shock.type}
-              onChange={(e) =>
-                setShock((s) => ({ ...s, type: e.target.value }))
-              }
-            >
-              <option value="permanent">Permanent</option>
-              <option value="linear_rebound">Linear rebound</option>
-              <option value="regime_shift">Regime shift</option>
-            </select>
-
-            {/* Shock % (only for permanent + linear_rebound) */}
-            {shock.type !== "regime_shift" && (
-              <>
-                <label
-                  style={{
-                    display: "block",
-                    marginTop: "0.8rem",
-                    marginBottom: "0.4rem",
-                  }}
-                >
-                  Shock %
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={shock.pct}
-                  onChange={(e) =>
-                    setShock((s) => ({ ...s, pct: Number(e.target.value) }))
-                  }
-                />
-              </>
-            )}
-
-            {/* Linear rebound controls */}
-            {shock.type === "linear_rebound" && (
-              <>
-                <label
-                  style={{
-                    display: "block",
-                    marginTop: "0.8rem",
-                    marginBottom: "0.4rem",
-                  }}
-                >
-                  Rebound days
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={shock.rebound_days}
-                  onChange={(e) =>
-                    setShock((s) => ({
-                      ...s,
-                      rebound_days: Number(e.target.value),
-                    }))
-                  }
-                />
-              </>
-            )}
-
-            {/* Regime shift controls */}
-            {shock.type === "regime_shift" && (
-              <>
-                <label
-                  style={{
-                    display: "block",
-                    marginTop: "0.8rem",
-                    marginBottom: "0.4rem",
-                  }}
-                >
-                  Volatility multiplier
-                </label>
-                <input
-                  type="number"
-                  min={0.1}
-                  step="0.1"
-                  value={shock.vol_mult}
-                  onChange={(e) =>
-                    setShock((s) => ({
-                      ...s,
-                      vol_mult: Number(e.target.value),
-                    }))
-                  }
-                />
-
-                <label
-                  style={{
-                    display: "block",
-                    marginTop: "0.8rem",
-                    marginBottom: "0.4rem",
-                  }}
-                >
-                  Drift shift
-                </label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={shock.drift_shift}
-                  onChange={(e) =>
-                    setShock((s) => ({
-                      ...s,
-                      drift_shift: Number(e.target.value),
-                    }))
-                  }
-                />
-              </>
-            )}
-
-            {/* Run button */}
-            <button
-              style={{ marginTop: "1rem" }}
-              onClick={() => {
-                if (!shock.date) {
-                  setError("Shock date is required.");
-                  return;
-                }
-                handleRunStress();
-              }}
-              disabled={stressLoading}
-            >
-              {stressLoading ? "Running..." : "Run Stress Test"}
-            </button>
-          </div>
+          <StressControls
+            shock={shock}
+            setShock={setShock}
+            startDate={startDate}
+            endDate={endDate}
+            today={today}
+            stressLoading={stressLoading}
+            onRunStress={handleRunStress}
+            onError={setError}
+          />
 
           {stress && (
-            <div className="panel-block">
-              <label>Forecast days</label>
-              <input
-                type="number"
-                min={1}
-                value={forecastDays}
-                onChange={(e) => setForecastDays(Number(e.target.value))}
-              />
-
-              <label style={{ marginTop: "0.6rem" }}>Mode</label>
-              <select
-                value={forecastMode}
-                onChange={(e) => setForecastMode(e.target.value)}
-              >
-                <option value="mean">Mean (full sample)</option>
-                <option value="rolling">Rolling mean</option>
-                <option value="ewma">EWMA</option>
-              </select>
-
-              {forecastMode === "rolling" && (
-                <>
-                  <label style={{ marginTop: "0.6rem" }}>
-                    Rolling window (days)
-                  </label>
-                  <input
-                    type="number"
-                    min={2}
-                    step={1}
-                    value={rollingWindow}
-                    onChange={(e) => setRollingWindow(Number(e.target.value))}
-                  />
-                </>
-              )}
-
-              {forecastMode === "ewma" && (
-                <>
-                  <label style={{ marginTop: "0.6rem" }}>
-                    EWMA lambda (0–1)
-                  </label>
-                  <input
-                    type="number"
-                    min={0.001}
-                    max={0.999}
-                    step={0.01}
-                    value={ewmaLambda}
-                    onChange={(e) => setEwmaLambda(Number(e.target.value))}
-                  />
-                  <div className="text-muted" style={{ marginTop: "0.25rem" }}>
-                    Higher λ = more weight on recent returns. Default 0.94.
-                  </div>
-                </>
-              )}
-
-              <button onClick={handleRunStressForecast}>Run Forecast</button>
-            </div>
+            <ForecastControls
+              forecastDays={forecastDays}
+              setForecastDays={setForecastDays}
+              forecastMode={forecastMode}
+              setForecastMode={setForecastMode}
+              rollingWindow={rollingWindow}
+              setRollingWindow={setRollingWindow}
+              ewmaLambda={ewmaLambda}
+              setEwmaLambda={setEwmaLambda}
+              onRun={handleRunStressForecast}
+              buttonLabel="Run Forecast"
+            />
           )}
         </section>
 
-        {/* Right Panel: Charts and Metrics */}
+        {/* ------------Right Panel: Charts and Metrics--------------- */}
         <section className="simulator-panel results-panel">
           <h2>Results</h2>
           <p className="text-muted">
-            Equity curve and risk metrics will appear here.
+            Add holdings and run analysis to see equity curve and metrics here.
           </p>
 
-          {/* Placeholder blocks */}
+          {/* Equity Curve */}
           {analysis || stress ? (
             <EquityCurveCard
               analysis={analysis}
@@ -482,16 +278,17 @@ export default function SimulatorPage() {
           ) : (
             <div className="panel-block">Equity curve</div>
           )}
-          {analysis ? (
-            <MetricsCard metrics={analysis.metrics} />
+
+          {/* Analytics Metrics */}
+          {analysis || stress || forecast || stressForecast ? (
+            <AnalyticsPanel
+              analysis={analysis}
+              stress={stress}
+              forecast={forecast}
+              stressForecast={stressForecast}
+            />
           ) : (
-            <div className="panel-block">Metrics</div>
-          )}
-          {/* NEW: scenario deltas card */}
-          {stress ? (
-            <ScenarioDeltasCard stress={stress} />
-          ) : (
-            <div className="panel-block">Scenario deltas</div>
+            <div className="panel-block">Analytics</div>
           )}
         </section>
       </div>

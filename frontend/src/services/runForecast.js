@@ -10,11 +10,7 @@ export async function runForecast({ analysisId, days, source, mode = "mean", win
     }
 
   
-    if (mode === "ewma") {
-        if (alpha == null && lam == null) {
-            throw new Error("Either alpha or lambda must be provided for ewma mode.");
-        }
-
+    if (mode === "ewma") { // !!! relax requirement as backend defaults to lambda=0.94 if none provided 
         if (alpha != null) {
             if (!(alpha > 0 && alpha < 1)) throw new Error("alpha must be in (0,1)");
             forecast.alpha = alpha;          // alpha wins
