@@ -11,9 +11,17 @@ from services.stress_service import analyze_with_shock
 from services.store_singleton import analysis_store
 from engines.forecast_engine import forecast_portfolio
 
+
 def create_app() -> Flask:
     app = Flask(__name__)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    
+    import os
+    ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+    
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": [o.strip() for o in ALLOWED_ORIGINS]}}
+    )
 
     @app.get("/api/health")
     def health():

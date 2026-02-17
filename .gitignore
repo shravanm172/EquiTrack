@@ -12,3 +12,9 @@ dist/
 
 # OS
 .DS_Store
+
+# Frontend environment variables
+frontend/.env.development
+frontend/.env.production
+frontend/.env.local
+frontend/.env.*.local
