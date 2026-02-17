@@ -16,12 +16,11 @@ def _safe_float(x: Any, default: float = 0.0) -> float:
 
 
 def _clamp_pct(x: float) -> float:
-    # keep things sane if you ever divide by 0 etc.
     if not math.isfinite(x):
         return 0.0
     return x
 
-# Historical analysis metrics
+# ================Historical analysis metrics======================
 
 def equity_curve(portfolio_returns: pd.Series, starting_cash: float) -> pd.Series:
     """
@@ -109,7 +108,7 @@ def sharpe_ratio(
     return float(sharpe_annual)
 
 
-# Forecasting analysis metrics
+# ====================Forecasting analysis metrics======================
 def forecast_final_value(forecast_curve: pd.Series) -> float:
     """Last value of forecast window."""
     if forecast_curve is None or forecast_curve.empty:

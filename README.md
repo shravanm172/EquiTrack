@@ -174,6 +174,7 @@ python -m venv venv
 
 
 ## Test Suite
+AI Usage Disclosure: GPT-5.2 was used to assist in generating pytest test cases for automated testing within the CI pipeline.
 Includes integration and unit tests for backend validation of major use cases with pytest
 
 - test_build_and_analyze_portfolio_integration
@@ -184,3 +185,13 @@ Includes integration and unit tests for backend validation of major use cases wi
         - test_risk_metrics
 - test_analyze_with_shock_integration
     - test_scenarios
+
+
+## Disclaimers
+### Note on Responsiveness
+## Responsiveness Note
+
+EquiTrack is currently optimized for desktop usage. 
+Mobile responsiveness has not yet been implemented, as development priority has focused on backend modeling, analytics correctness, and system architecture. 
+
+Responsive design will be addressed in future iterations, most likely through React for continued web support. 

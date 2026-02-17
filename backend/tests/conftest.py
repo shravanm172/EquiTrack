@@ -1,3 +1,4 @@
+# AI Disclosure: This file includes content generated with GPT-5.2.
 import sys
 from pathlib import Path
 
