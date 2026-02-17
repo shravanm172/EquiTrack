@@ -31,7 +31,7 @@ def create_app() -> Flask:
     def store_stats():
         return jsonify(analysis_store.stats())
     
-    @app.post("/api/holdings/validate")
+    @app.route("/api/holdings/validate", methods=["POST", "OPTIONS"])
     def validate_holding():
         payload = request.get_json(silent=True) or {}
 
@@ -100,7 +100,7 @@ def create_app() -> Flask:
                 "reason": "Unspecified provider error. Check ticker.",
             }), 200
 
-    @app.post("/api/analyze")
+    @app.route("/api/analyze", methods=["POST", "OPTIONS"])
     def analyze():
         payload = request.get_json(silent=True) or {}
         try:
@@ -120,7 +120,7 @@ def create_app() -> Flask:
         except Exception:
             return jsonify({"error": "Internal server error"}), 500
         
-    @app.post("/api/analyze_shock")
+    @app.route("/api/analyze_shock", methods=["POST", "OPTIONS"])
     def analyze_shock():
         payload = request.get_json(silent=True) or {}
         try:
@@ -131,7 +131,7 @@ def create_app() -> Flask:
         except Exception:
             return jsonify({"error": "Internal server error"}), 500
         
-    @app.post("/api/forecast")
+    @app.route("/api/forecast", methods=["POST", "OPTIONS"])
     def forecast():
         payload = request.get_json(silent=True) or {}
         try:
