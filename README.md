@@ -55,7 +55,7 @@ Forecasts can run on baseline and stress outputs, and are visualized alongside h
 
 ## Architecture Overview
 
-The system is intentionally layered to separate pure analytical logic from orchestration and API exposure.
+The system is intentionaly layered to separate pure analytical logic from orchestration and API exposure.
 Backend modules align with current code layout:
 
 - `services/analysis_service.py`
@@ -77,7 +77,7 @@ Backend modules align with current code layout:
   - Health check
 
 - `POST /api/holdings/validate`
-  - Validates ticker/date and resolves next valid trading day/price when needed
+  - Validates ticker/date and resolves next valid trading day/price when needded
 
 - `POST /api/analyze`
   - Baseline portfolio analytics
