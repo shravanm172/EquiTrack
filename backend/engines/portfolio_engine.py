@@ -10,7 +10,7 @@ def prices_to_returns(prices: pd.DataFrame) -> pd.DataFrame:
     r_t = (P_t / P_{t-1}) - 1
     """
     returns = prices.pct_change()
-    returns = returns.dropna(how="all")
+    returns = returns.dropna(how="any")
     return returns
 
 
