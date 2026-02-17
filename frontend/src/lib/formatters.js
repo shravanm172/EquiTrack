@@ -37,7 +37,7 @@ export function formatPrice(x) {
 
 /**
  * Returns object with numeric fields = (scen - base).
- * Non-numerics become null (so your blocks can render "—").
+ * Non-numerics become null (so blocks can render "—").
  */
 export function diffObjects(base, scen) {
   if (!base || !scen) return null;

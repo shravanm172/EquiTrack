@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { apiUrl } from "../config/api";
 
 function normalizeTicker(t) {
   return (t || "").trim().toUpperCase();
@@ -36,7 +37,7 @@ export default function AddHoldingForm({ holdings, setHoldings }) {
   }, [ticker, shares, buyDate]);
 
   async function validateWithBackend(symbol, date) {
-    const res = await fetch("http://localhost:5000/api/holdings/validate", {
+    const res = await fetch(apiUrl("/api/holdings/validate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -106,7 +107,7 @@ export default function AddHoldingForm({ holdings, setHoldings }) {
 
       if (result.note) setNote(result.note);
 
-      // Always create a NEW lot (no merging / duplicate prevention)
+      // Creating new holding with backend-validated price and date info
       const newHolding = {
         id: crypto.randomUUID(),
         ticker: symbol,

@@ -2,7 +2,11 @@ import { formatPrice } from "../lib/formatters";
 
 export default function Portfolio({ holdings, onRemove }) {
   if (holdings.length === 0) {
-    return <div className="panel-block">No holdings added yet.</div>;
+    return (
+      <div className="panel-block">
+        No holdings added yet. Use the form below.
+      </div>
+    );
   }
 
   return (

@@ -151,9 +151,9 @@ export default function LineChartCard({
     const n = chartData.length;
     if (!n) return;
     setBrush({ startIndex: 0, endIndex: n - 1 });
-  }, [chartData.length]); // IMPORTANT: depend on length
+  }, [chartData.length]); // depend on length
 
-  // ✅ Force FULL remount when the data range changes (fixes stale domain/brush)
+  // Force FULL remount when the data range changes (fixes stale domain/brush)
   const chartKey = useMemo(() => {
     if (!chartData.length) return "empty";
     const first = String(chartData[0]?.[xKey] ?? "");
@@ -166,7 +166,7 @@ export default function LineChartCard({
       <div className="chart-header">
         <div>
           <h3 className="chart-title">{title}</h3>
-          {subtitle ? <div className="text-muted">{subtitle}</div> : null}
+          {subtitle ? <div className="my-text-muted">{subtitle}</div> : null}
         </div>
 
         <div className="chart-toggle">
@@ -186,7 +186,7 @@ export default function LineChartCard({
       <div className="chart-area">
         <ResponsiveContainer width="100%" height={320}>
           <LineChart
-            key={chartKey} // ✅ THIS is the important part
+            key={chartKey}
             data={chartData}
             margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
           >
@@ -203,7 +203,7 @@ export default function LineChartCard({
                 <DefaultTooltipContent
                   labelFormatter={tooltipLabelFormatter}
                   valueFormatter={(v) => {
-                    // preserve your existing single-series formatting contract
+                    // preserve existing single-series formatting contract
                     const out = tooltipValueFormatter(v);
                     return [out?.[0] ?? v];
                   }}

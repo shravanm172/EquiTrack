@@ -1,3 +1,4 @@
+// Formatting template for forecast summary data
 export default function ForecastSummaryCard({
   title = "Forecast Summary",
   summary,
@@ -22,32 +23,32 @@ export default function ForecastSummaryCard({
         }}
       >
         <div>
-          <div className="text-muted">Last historical value</div>
+          <div className="my-text-muted">Last historical value</div>
           <div>{fmtNum(summary.last_historical_value)}</div>
         </div>
 
         <div>
-          <div className="text-muted">Forecast end value</div>
+          <div className="my-text-muted">Forecast end value</div>
           <div>{fmtNum(summary.forecast_end_value)}</div>
         </div>
 
         <div>
-          <div className="text-muted">Abs change</div>
+          <div className="my-text-muted">Abs change</div>
           <div>{fmtNum(summary.forecast_abs_change)}</div>
         </div>
 
         <div>
-          <div className="text-muted">Total return</div>
+          <div className="my-text-muted">Total return</div>
           <div>{fmtPct(summary.forecast_total_return)}</div>
         </div>
 
         <div>
-          <div className="text-muted">Avg daily return</div>
+          <div className="my-text-muted">Avg daily return</div>
           <div>{fmtPct(summary.forecast_avg_daily_return)}</div>
         </div>
 
         <div>
-          <div className="text-muted">
+          <div className="my-text-muted">
             Days to target (×{summary.target_multiple})
           </div>
           <div>{summary.days_to_target_multiple ?? "—"}</div>
@@ -55,7 +56,7 @@ export default function ForecastSummaryCard({
       </div>
 
       {summary.trend && (
-        <div style={{ marginTop: "0.8rem" }} className="text-muted">
+        <div style={{ marginTop: "0.8rem" }} className="my-text-muted">
           Trend: {summary.trend.mode}
           {summary.trend.window ? ` (window=${summary.trend.window})` : ""}
           {summary.trend.lambda ? ` (λ=${summary.trend.lambda})` : ""}

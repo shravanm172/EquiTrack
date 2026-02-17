@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import LineChartCard from "./LineChartCard";
+import LineChartCard from "./LineChartCard"; // Uses LineCartCard template
 
 function money(v) {
   const n = Number(v);
@@ -41,7 +41,7 @@ export default function EquityCurveCard({
 
   const data = useMemo(() => {
     if (hasStress) {
-      // ✅ Prefer forecasted (combined) curves if available, else fall back to historical stress curves
+      // Prefer forecasted (combined) curves if available, else fall back to historical stress curves
       const baseCurve =
         stressForecast?.baseline?.equity_curve || stress.baseline.equity_curve;
 

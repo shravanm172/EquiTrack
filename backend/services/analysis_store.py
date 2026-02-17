@@ -1,4 +1,3 @@
-# services/analysis_store.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,8 +11,7 @@ import uuid
 class StoredAnalysis:
     created_at: datetime
     expires_at: datetime
-    payload: Dict[str, Any]  # your artifacts (returns, weights, etc.)
-
+    payload: Dict[str, Any]  
 
 class AnalysisStore:
     """

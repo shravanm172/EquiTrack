@@ -1,4 +1,3 @@
-// components/MetricsCard.jsx
 export default function MetricsCard({ metrics }) {
   if (!metrics) return null;
 

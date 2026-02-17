@@ -3,6 +3,11 @@ from __future__ import annotations
 import pandas as pd
 
 
+# Stress scenarios defined here:
+# - apply_price_shock: simple multiplicative shock to all prices on/after shock date with NO rebound
+# - apply_shock_with_linear_rebound: shock that then linearly rebounds back to baseline over a window
+# - apply_regime_shift: more complex shock that distorts returns by increasing volatility and adding a drift shift (e.g., -0.05% daily drift)
+
 def apply_price_shock(prices: pd.DataFrame, shock_date: str, shock_pct: float) -> pd.DataFrame:
     """
     Apply a multiplicative price shock to ALL assets on and after shock_date.
@@ -97,12 +102,11 @@ def apply_regime_shift(
 ) -> pd.DataFrame:
     """
     Regime shift stress test: after shock_date, make returns more volatile and
-    add a constant drift shift (often negative).
+    add a constant drift shift ( usually negative).
 
-    - vol_mult: multiplies the "noise" part of returns (e.g., 1.5 -> 50% more volatile)
+    - vol_mult: multiplies the noise of returns (e.g., 1.5 -> 50% more volatile)
     - drift_shift: constant added to daily returns after shock (e.g., -0.0005 ≈ -0.05% per day)
 
-    Method:
     1) Convert prices -> daily returns r_t
     2) For t >= shock_date:
          r'_t = mean(r_post) + vol_mult * (r_t - mean(r_post)) + drift_shift
@@ -143,7 +147,7 @@ def apply_regime_shift(
     post_rets = mu + float(vol_mult) * (post_rets - mu) + float(drift_shift)
 
     # Rebuild prices from start_date onward using compounded returns
-    # Start from the baseline price on the day BEFORE start_date (anchor)
+    # Start from the baseline price on the day before start_date (anchor)
     anchor_pos = max(start_pos - 1, 0)
     anchor_date = idx[anchor_pos]
     anchor_prices = shocked.loc[anchor_date]

@@ -6,6 +6,10 @@ from engines.analytics_engine import equity_curve
 from engines.analytics_engine import forecast_summary
 
 
+DEFAULT_ROLLING_WINDOW = 60
+DEFAULT_LAMBDA = 0.94
+DEFAULT_ALPHA = 1.0 - DEFAULT_LAMBDA
+
 def _estimate_drift(
     port_r: pd.Series,
     mode: str,
@@ -23,13 +27,13 @@ def _estimate_drift(
     """
     mode = (mode or "").strip().lower()
 
-    if mode == "mean":
+    if mode == "mean": # Simple historical mean: use the mean of ALL available returns
         r_hat = float(port_r.mean())
         return r_hat, {"mode": "mean", "mean_daily_return": r_hat}
 
     if mode == "rolling":
         if window is None:
-            window = 60  # default
+            window = DEFAULT_ROLLING_WINDOW  # default
 
         try:
             window = int(window)
@@ -48,10 +52,11 @@ def _estimate_drift(
         return r_hat, {"mode": "rolling", "window": window, "mean_daily_return": r_hat}
 
     if mode == "ewma":
-        # Allow either alpha or lambda, with sensible defaults
+        # Allow either alpha or lambda
         # RiskMetrics daily default lambda=0.94 => alpha=0.06
         if alpha is None and lam is None:
-            lam = 0.94
+            lam = DEFAULT_LAMBDA
+            alpha = DEFAULT_ALPHA
 
         # If alpha provided, it wins; otherwise derive from lambda
         if alpha is not None:
@@ -72,7 +77,7 @@ def _estimate_drift(
             alpha = 1.0 - lam
 
         # EWMA recursion: mu_t = alpha*r_t + (1-alpha)*mu_{t-1}
-        # We'll seed mu_0 as the first return (common/simple).
+        # Seed mu_0 as the first return.
         s = port_r.dropna()
         if s.empty:
             raise ValueError("Not enough return data to forecast (portfolio returns empty).")
@@ -104,6 +109,12 @@ def _forecast_from_returns(
     alpha: float | None = None,
     lam: float | None = None,
 ) -> dict[str, Any]:
+    """
+    Generate forecast equity curve from portfolio returns and specified drift estimation method.
+
+    Returns combined historical + forecast equity curve and summary stats.
+    """
+
     if forecast_days <= 0:
         raise ValueError("forecast_days must be > 0")
 
@@ -115,7 +126,7 @@ def _forecast_from_returns(
     if not isinstance(hist_curve, pd.Series):
         raise TypeError("equity_curve must return a pandas Series.")
 
-    r_hat, trend_meta = _estimate_drift(port_r, mode, window=window, alpha=alpha, lam=lam)
+    r_hat, trend_meta = _estimate_drift(port_r, mode, window=window, alpha=alpha, lam=lam) # Estimate drift using specified method
 
     last_date = hist_curve.index[-1]
     future_idx = pd.bdate_range(last_date + pd.Timedelta(days=1), periods=forecast_days)
@@ -145,8 +156,8 @@ def _forecast_from_returns(
     summary = forecast_summary(
         hist_curve=hist_curve,
         forecast_curve=forecast_curve,
-        trend=trend_meta,          # optional but nice for UI
-        target_multiple=1.10,      # optional default
+        trend=trend_meta,          
+        target_multiple=1.10,      
     )
 
     return {
@@ -159,6 +170,11 @@ def _forecast_from_returns(
 
 
 def forecast_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Main entry point for portfolio forecasting.  
+
+    Returns forecasted equity curve and summary stats based on historical portfolio returns and specified forecasting method.
+    """
     analysis_id = str(payload.get("analysis_id", "")).strip()
     if not analysis_id:
         raise ValueError("analysis_id is required.")

@@ -1,4 +1,3 @@
-// src/components/ForecastControls.jsx
 export default function ForecastControls({
   forecastDays,
   setForecastDays,
@@ -24,7 +23,6 @@ export default function ForecastControls({
 
       <label className="form-label form-label--spaced">Mode</label>
       <select
-        className="form-select"
         value={forecastMode}
         onChange={(e) => setForecastMode(e.target.value)}
       >
@@ -69,7 +67,7 @@ export default function ForecastControls({
         </>
       )}
 
-      <button className="btn btn--secondary btn--spaced" onClick={onRun}>
+      <button className="secondary-btn" onClick={onRun}>
         {buttonLabel}
       </button>
     </div>

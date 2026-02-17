@@ -1,4 +1,6 @@
+// Service for running portfolio analysis by sending holdings and date range to backend API.
 import { buildAnalyzePayloadFromLots } from "../lib/portfolioPayload";
+import { apiUrl } from "../config/api";
 
 function todayYYYYMMDD() {
   return new Date().toISOString().slice(0, 10);
@@ -18,7 +20,7 @@ export async function runPortfolioAnalysis({ holdings, startDate, endDate }) {
     throw new Error("Add at least one holding before running analysis.");
   }
 
-  const res = await fetch("http://localhost:5000/api/analyze", {
+  const res = await fetch(apiUrl("/api/analyze"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

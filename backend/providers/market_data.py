@@ -42,7 +42,7 @@ def fetch_price_history(tickers: Iterable[str], start: str, end: str) -> PriceHi
         prices = df[["Close"]].copy()
         prices.columns = tickers_list
 
-    prices = prices.dropna(how="all")
+    prices = prices.dropna(how="all") # Drop rows where all tickers are NaN (non-trading days)
     if prices.empty:
         raise ValueError("No price data returned (bad tickers or empty date range).")
 

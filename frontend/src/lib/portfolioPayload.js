@@ -1,3 +1,4 @@
+// Builds the payload for the /analyze endpoint from an array of lots, start/end dates, and optional starting cash.
 function normalizeTicker(t) {
   return (t || "").trim().toUpperCase();
 }

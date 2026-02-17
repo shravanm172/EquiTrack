@@ -1,3 +1,5 @@
+// Main page for portfolio simulation. Allows users to input holdings, run analysis, stress tests, and forecasts, and view results in charts and metrics.
+
 import { useState } from "react";
 import Portfolio from "../components/Portfolio";
 import AddHoldingForm from "../components/AddHoldingForm";
@@ -10,6 +12,7 @@ import { runForecast } from "../services/runForecast";
 import StressControls from "../components/StressControls";
 import ForecastControls from "../components/ForecastControls";
 import AnalyticsPanel from "../components/AnalyticsPanel";
+import useBootstrapTooltip from "../hooks/useBootstrapTooltip";
 
 function todayYYYYMMDD() {
   return new Date().toISOString().slice(0, 10);
@@ -160,14 +163,14 @@ export default function SimulatorPage() {
     }
   }
 
+  useBootstrapTooltip([analysis, stress, forecast, stressForecast]); // reinitialize tooltips when results change
+
   return (
     <div className="simulator-page">
       <div className="simulator-grid">
         {/* Left Panel: Portfolio / Controls */}
         <section className="simulator-panel input-panel">
           <h2>Portfolio</h2>
-          {/* <p className="text-muted">Build your portfolio and run analysis.</p> */}
-
           <Portfolio holdings={holdings} onRemove={removeHolding} />
           <AddHoldingForm holdings={holdings} setHoldings={setHoldings} />
 
@@ -213,6 +216,12 @@ export default function SimulatorPage() {
             >
               {loading ? "Running..." : "Analyze Portfolio"}
             </button>
+            <span
+              className="my-text-muted"
+              style={{ fontSize: "1rem", marginLeft: "1rem" }}
+            >
+              Run baseline analysis on portfolio
+            </span>
             {error && <div className="text-danger">{error}</div>}
           </div>
 
@@ -263,7 +272,7 @@ export default function SimulatorPage() {
         {/* ------------Right Panel: Charts and Metrics--------------- */}
         <section className="simulator-panel results-panel">
           <h2>Results</h2>
-          <p className="text-muted">
+          <p className="my-text-muted">
             Add holdings and run analysis to see equity curve and metrics here.
           </p>
 

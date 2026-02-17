@@ -20,7 +20,6 @@ def portfolio_returns(asset_returns: pd.DataFrame, weights: dict[str, float]) ->
 
     portfolio_return[t] = sum_i (w_i * r_i[t])
 
-    Notes:
     - We normalize weights to sum to 1.0 
     - Missing return values are treated as 0.0 for that day for that asset.
     """

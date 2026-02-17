@@ -1,5 +1,4 @@
-// src/components/StressControls.jsx
-
+// Inputs for stress testing. Calls onRunStress when user clicks "Run Stress Test" button, which triggers the API call
 export default function StressControls({
   shock,
   setShock,
@@ -28,7 +27,6 @@ export default function StressControls({
 
       <label className="form-label form-label--spaced">Type</label>
       <select
-        className="form-select"
         value={shock.type}
         onChange={(e) => setShock((s) => ({ ...s, type: e.target.value }))}
       >
