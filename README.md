@@ -144,8 +144,27 @@ Important: restart `npm run dev` after changing `.env.*` files.
 
 ### 4) Production API config
 
-Set `VITE_API_URL` in your deployment environment (or in `frontend/.env.production`) to your deployed backend URL.
+Set environment variables in your deployment platforms (recommended) instead of committing `.env.production`.
 
+- Frontend (`VITE_API_URL`):
+  - `VITE_API_URL=https://equitrack-p4yp.onrender.com`
+- Backend (`CORS_ORIGINS`):
+  - `CORS_ORIGINS=https://equi-track.vercel.app`
+  - For multiple origins, use comma-separated values.
+
+After updating frontend env vars, trigger a redeploy so Vite rebuilds with the new values.
+
+
+## Live Deployment
+
+Frontend (Vercel):
+https://equi-track.vercel.app
+
+Backend (Render):
+https://equitrack-p4yp.onrender.com
+
+Backend Health Check:
+https://equitrack-p4yp.onrender.com/api/health
 ---
 
 ## Test Suite
@@ -159,6 +178,21 @@ pytest
 ```
 
 Current tests cover baseline analytics pipeline, stress scenarios, and forecast integration.
+
+----
+
+## CI / CD Pipeline
+
+EquiTrack uses GitHub Actions for continuous integration.
+
+- Automated backend test suite runs on every pull request.
+- Merges to `main` require passing status checks.
+- Backend auto-deploys to Render on successful merge.
+- Frontend auto-deploys to Vercel on push to `main`.
+
+This ensures code correctness before deployment and enforces disciplined development workflow.
+
+----
 
 **AI usage disclosure:** GPT-5.2 was used to assist in generating parts of the pytest test suite.
 

@@ -23,16 +23,22 @@ def create_app() -> Flask:
         resources={r"/api/*": {"origins": [o.strip() for o in ALLOWED_ORIGINS]}}
     )
 
-    @app.get("/api/health")
+    @app.route("/api/health", methods=["GET", "OPTIONS"])
     def health():
+        if request.method == "OPTIONS":
+            return "", 200
         return jsonify({"status": "ok"})
     
-    @app.get("/api/store/stats")
+    @app.route("/api/store/stats", methods=["GET", "OPTIONS"])
     def store_stats():
+        if request.method == "OPTIONS":
+            return "", 200
         return jsonify(analysis_store.stats())
     
     @app.route("/api/holdings/validate", methods=["POST", "OPTIONS"])
     def validate_holding():
+        if request.method == "OPTIONS":
+            return "", 200
         payload = request.get_json(silent=True) or {}
 
         ticker = str(payload.get("ticker", "")).strip().upper()
@@ -102,6 +108,8 @@ def create_app() -> Flask:
 
     @app.route("/api/analyze", methods=["POST", "OPTIONS"])
     def analyze():
+        if request.method == "OPTIONS":
+            return "", 200
         payload = request.get_json(silent=True) or {}
         try:
             result = analyze_portfolio(payload)
@@ -122,6 +130,8 @@ def create_app() -> Flask:
         
     @app.route("/api/analyze_shock", methods=["POST", "OPTIONS"])
     def analyze_shock():
+        if request.method == "OPTIONS":
+            return "", 200
         payload = request.get_json(silent=True) or {}
         try:
             result = analyze_with_shock(payload)
@@ -133,6 +143,8 @@ def create_app() -> Flask:
         
     @app.route("/api/forecast", methods=["POST", "OPTIONS"])
     def forecast():
+        if request.method == "OPTIONS":
+            return "", 200
         payload = request.get_json(silent=True) or {}
         try:
             result = forecast_portfolio(payload)
