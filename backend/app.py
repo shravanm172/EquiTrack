@@ -158,7 +158,8 @@ def create_app() -> Flask:
     
     return app
 
-
+# WSGI entrypoint for gunicorn
+app = create_app()
 
 if __name__ == "__main__":
     app = create_app()
