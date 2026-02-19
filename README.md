@@ -1,5 +1,7 @@
 # EquiTrack
 
+### Video Demo: https://youtu.be/rMnUNgCTM6U
+
 **EquiTrack** is a full-stack portfolio analytics and market simulation platform designed to analyze, stress test, and forecast equity portfolio performance across varying market regimes.
 
 It combines historical market data, deterministic portfolio analytics, stress-scenario transforms, and forward projections in a modular Flask backend + React frontend architecture.
@@ -202,4 +204,4 @@ This ensures code correctness before deployment and enforces disciplined develop
 
 ### Responsiveness
 
-EquiTrack interface is currently optimized for desktop usage. Mobile responsiveness is planned for a future iteration.
+The EquiTrack interface is currently optimized for desktop usage. Mobile responsiveness is planned for a future iteration.
