@@ -1,10 +1,9 @@
-// Base Template for Line Charts (supports 1+ series)
-
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
-  LineChart,
+  ComposedChart,
   Line,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
@@ -42,42 +41,46 @@ function DefaultTooltipContent({
   if (!active || !payload || payload.length === 0) return null;
 
   const formattedLabel = labelFormatter ? labelFormatter(label) : String(label);
+  const allowedKeys = new Set((series || []).map((s) => s.key));
 
   return (
     <div className="chart-tooltip">
       <div className="chart-tooltip__label">{formattedLabel}</div>
 
       <div className="chart-tooltip__rows">
-        {payload.map((p) => {
-          const key = p.dataKey;
-          const s = Array.isArray(series)
-            ? series.find((it) => it.key === key)
-            : null;
-          const displayName = s?.label || p.name || key;
+        {payload
+          .filter((p) => allowedKeys.has(p.dataKey))
+          .map((p) => {
+            const key = p.dataKey;
+            const s = Array.isArray(series)
+              ? series.find((it) => it.key === key)
+              : null;
+            const displayName = s?.label || p.name || key;
 
-          const out = valueFormatter ? valueFormatter(p.value) : [p.value];
-          const displayValue = Array.isArray(out) ? out[0] : out;
+            const out = valueFormatter
+              ? valueFormatter(p.value, key)
+              : [p.value];
+            const displayValue = Array.isArray(out) ? out[0] : out;
 
-          return (
-            <div className="chart-tooltip__row" key={key}>
-              <span className="chart-tooltip__name">{displayName}</span>
-              <span className="chart-tooltip__value">{displayValue}</span>
-            </div>
-          );
-        })}
+            return (
+              <div className="chart-tooltip__row" key={key}>
+                <span className="chart-tooltip__name">{displayName}</span>
+                <span className="chart-tooltip__value">{displayValue}</span>
+              </div>
+            );
+          })}
       </div>
     </div>
   );
 }
 
-// Keep last point per bucket
 function resample(points, mode, xKey = "date") {
   if (!Array.isArray(points) || points.length === 0) return [];
   if (mode === "daily" || mode === "max") return points;
 
   const keyFn =
     mode === "monthly"
-      ? (p) => String(p[xKey]).slice(0, 7) // YYYY-MM
+      ? (p) => String(p[xKey]).slice(0, 7)
       : (p) => {
           const d = parseISODate(p[xKey]);
           const y = d.getFullYear();
@@ -94,66 +97,47 @@ function resample(points, mode, xKey = "date") {
       out.push(p);
       lastKey = k;
     } else {
-      out[out.length - 1] = p; // keep last point in bucket
+      out[out.length - 1] = p;
     }
   }
   return out;
 }
 
-/**
- * Props:
- * - data: array of points
- * - xKey: key for x axis (default "date")
- *
- * Single-series (legacy):
- * - yKey: key for y values (default "value")
- * - yLabel: label for tooltip (default "Value")
- *
- * Multi-series (new):
- * - series: [{ key: "baseline", label: "Baseline" }, ...]
- */
 export default function LineChartCard({
   title,
   subtitle,
   data,
   xKey = "date",
-
-  // legacy single-series support
   yKey = "value",
   yLabel = "Value",
-
-  // multi-series support
   series = [],
+  bands = [],
   linePropsByKey = {},
-
-  // formatting hooks
   xTickFormatter = defaultXTick,
   tooltipLabelFormatter = defaultTooltipLabel,
   tooltipValueFormatter = (v) => [v, yLabel],
   yTickFormatter = (v) => v,
-
-  // view controls
-  defaultView = "daily", // daily | weekly | monthly | max
+  defaultView = "daily",
   allowViews = ["daily", "weekly", "monthly", "max"],
+  extraControls = null,
 }) {
   const [view, setView] = useState(defaultView);
   const [brush, setBrush] = useState({ startIndex: 0, endIndex: 0 });
 
   const hasSeries = Array.isArray(series) && series.length > 0;
+  const hasBands = Array.isArray(bands) && bands.length > 0;
 
   const chartData = useMemo(() => {
     const pts = Array.isArray(data) ? data : [];
-    if (view === "max") return pts;
-    return resample(pts, view, xKey);
+    return view === "max" ? pts : resample(pts, view, xKey);
   }, [data, view, xKey]);
 
   useEffect(() => {
     const n = chartData.length;
     if (!n) return;
     setBrush({ startIndex: 0, endIndex: n - 1 });
-  }, [chartData.length]); // depend on length
+  }, [chartData.length]);
 
-  // Force FULL remount when the data range changes (fixes stale domain/brush)
   const chartKey = useMemo(() => {
     if (!chartData.length) return "empty";
     const first = String(chartData[0]?.[xKey] ?? "");
@@ -169,23 +153,29 @@ export default function LineChartCard({
           {subtitle ? <div className="my-text-muted">{subtitle}</div> : null}
         </div>
 
-        <div className="chart-toggle">
-          {allowViews.map((k) => (
-            <button
-              key={k}
-              type="button"
-              className={`toggle-btn ${view === k ? "active" : ""}`}
-              onClick={() => setView(k)}
-            >
-              {k === "max" ? "Max" : k[0].toUpperCase() + k.slice(1)}
-            </button>
-          ))}
+        <div
+          className="chart-header-right"
+          style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}
+        >
+          {extraControls}
+          <div className="chart-toggle">
+            {allowViews.map((k) => (
+              <button
+                key={k}
+                type="button"
+                className={`toggle-btn ${view === k ? "active" : ""}`}
+                onClick={() => setView(k)}
+              >
+                {k === "max" ? "Max" : k[0].toUpperCase() + k.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="chart-area">
         <ResponsiveContainer width="100%" height={320}>
-          <LineChart
+          <ComposedChart
             key={chartKey}
             data={chartData}
             margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
@@ -202,15 +192,33 @@ export default function LineChartCard({
               content={
                 <DefaultTooltipContent
                   labelFormatter={tooltipLabelFormatter}
-                  valueFormatter={(v) => {
-                    // preserve existing single-series formatting contract
-                    const out = tooltipValueFormatter(v);
+                  valueFormatter={(v, key) => {
+                    const out = tooltipValueFormatter(v, key);
                     return [out?.[0] ?? v];
                   }}
                   series={hasSeries ? series : []}
                 />
               }
             />
+
+            {hasBands &&
+              bands.map((b) =>
+                b.visible ? (
+                  <Area
+                    key={b.key}
+                    type="natural"
+                    dataKey={b.rangeKey}
+                    isRange
+                    stroke="none"
+                    fill={b.color}
+                    fillOpacity={0.22}
+                    connectNulls={false}
+                    dot={false}
+                    activeDot={false}
+                    isAnimationActive={false}
+                  />
+                ) : null,
+              )}
 
             {hasSeries ? (
               series.map((s) => (
@@ -222,6 +230,8 @@ export default function LineChartCard({
                   strokeWidth={2}
                   stroke={s.color}
                   name={s.label}
+                  connectNulls={false}
+                  isAnimationActive={false}
                   {...(linePropsByKey?.[s.key] || {})}
                 />
               ))
@@ -231,6 +241,8 @@ export default function LineChartCard({
                 dataKey={yKey}
                 dot={false}
                 strokeWidth={2}
+                connectNulls={false}
+                isAnimationActive={false}
               />
             )}
 
@@ -246,7 +258,7 @@ export default function LineChartCard({
                 });
               }}
             />
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </div>
