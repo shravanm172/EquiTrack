@@ -44,13 +44,11 @@ def test_forecast_from_returns_mean_shapes_and_continuity(port_returns_uptrend):
         mode="mean",
     )
 
-    # Required keys
     assert "trend" in out
     assert "historical_equity_curve" in out
     assert "forecast_equity_curve" in out
     assert "equity_curve" in out
 
-    # Trend info
     assert out["trend"]["mode"] == "mean"
     r_hat = out["trend"]["mean_daily_return"]
     assert isinstance(r_hat, float)
@@ -60,17 +58,14 @@ def test_forecast_from_returns_mean_shapes_and_continuity(port_returns_uptrend):
     fc = out["forecast_equity_curve"]
     combined = out["equity_curve"]
 
-    # Length checks
     assert len(hist) > 0
     assert len(fc) == forecast_days
     assert len(combined) == len(hist) + len(fc)
 
-    # Date boundary checks
     last_hist_date = pd.to_datetime(hist[-1]["date"])
     first_fc_date = pd.to_datetime(fc[0]["date"])
     assert first_fc_date > last_hist_date
 
-    # Continuity check (rounded to 2 decimals like service)
     last_hist_val = float(hist[-1]["value"])
     expected_first_fc = round(last_hist_val * (1.0 + float(r_hat)), 2)
     assert float(fc[0]["value"]) == pytest.approx(expected_first_fc, abs=1e-9)
@@ -98,7 +93,7 @@ def test_forecast_from_returns_empty_returns_raises():
 
 
 def test_forecast_from_returns_invalid_mode_raises(port_returns_uptrend):
-    with pytest.raises(ValueError, match="forecast\.mode must be"):
+    with pytest.raises(ValueError, match="drift mode must be"):
         fe._forecast_from_returns(
             port_r=port_returns_uptrend,
             starting_cash=100_000.0,
@@ -127,9 +122,8 @@ def test_forecast_from_returns_rolling_uses_last_window(port_returns_mixed):
     assert out["trend"]["window"] == window
 
     r_hat = float(out["trend"]["mean_daily_return"])
-    assert r_hat == pytest.approx(0.10, abs=1e-12)  # last 2 returns are 0.1, 0.1
+    assert r_hat == pytest.approx(0.10, abs=1e-12)
 
-    # Sanity: forecast grows by 10% per step from last historical value
     hist = out["historical_equity_curve"]
     fc = out["forecast_equity_curve"]
     last_hist_val = float(hist[-1]["value"])
@@ -160,7 +154,7 @@ def test_forecast_from_returns_rolling_window_nonpositive_raises(port_returns_up
 
 
 # -----------------------------
-# UNIT TEST: _forecast_from_returns (rolling)
+# UNIT TEST: _forecast_from_returns (ewma)
 # -----------------------------
 def test_forecast_from_returns_ewma_alpha_computes_expected_drift():
     idx = pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"])
@@ -182,7 +176,7 @@ def test_forecast_from_returns_ewma_alpha_computes_expected_drift():
 
 def test_forecast_from_returns_ewma_defaults_lambda(port_returns_uptrend):
     out = fe._forecast_from_returns(
-        port_r=port_returns_uptrend,  
+        port_r=port_returns_uptrend,
         starting_cash=100_000.0,
         forecast_days=3,
         mode="ewma",
@@ -202,8 +196,9 @@ def test_forecast_from_returns_ewma_invalid_alpha_raises(port_returns_uptrend):
             alpha=1.0,
         )
 
+
 # -----------------------------
-# INTEGRATION TEST: /api/forecast endpoint
+# INTEGRATION TEST: unified /api/forecast endpoint
 # -----------------------------
 @pytest.fixture
 def client():
@@ -229,12 +224,40 @@ def _seed_analysis_in_store(port_r: pd.Series, starting_cash: float = 100_000.0)
             },
             "portfolio_returns": port_r,
             "last_equity_date": port_r.index[-1],
-            "last_equity_value": 0.0,  # unused by current forecaster (it rebuilds curve)
+            "last_equity_value": 0.0,
         }
     )
 
 
-def test_forecast_endpoint_mean_returns_expected_shape(client, port_returns_uptrend):
+def _seed_shock_analysis_in_store(
+    baseline_r: pd.Series,
+    scenario_r: pd.Series,
+    starting_cash: float = 100_000.0,
+) -> str:
+    """
+    Seed an analyze_shock-style cache entry so source=baseline/source=scenario
+    can be tested through the unified forecast endpoint.
+    """
+    return analysis_store.put(
+        {
+            "kind": "analyze_shock",
+            "inputs": {
+                "mode": "weights",
+                "starting_cash": float(starting_cash),
+                "date_range": {"start": "2025-01-02", "end": "2025-01-08"},
+                "weights": {"AAPL": 0.5, "MSFT": 0.5},
+            },
+            "baseline_returns": baseline_r,
+            "scenario_returns": scenario_r,
+            "baseline_last_equity_date": baseline_r.index[-1],
+            "baseline_last_equity_value": 0.0,
+            "scenario_last_equity_date": scenario_r.index[-1],
+            "scenario_last_equity_value": 0.0,
+        }
+    )
+
+
+def test_forecast_endpoint_deterministic_returns_expected_shape(client, port_returns_uptrend):
     analysis_id = _seed_analysis_in_store(port_returns_uptrend)
 
     forecast_days = 7
@@ -242,58 +265,169 @@ def test_forecast_endpoint_mean_returns_expected_shape(client, port_returns_uptr
         "/api/forecast",
         json={
             "analysis_id": analysis_id,
-            "forecast": {"days": forecast_days, "mode": "mean"},
+            "source": "baseline",
+            "forecast": {
+                "type": "deterministic",
+                "days": forecast_days,
+                "drift_mode": "mean",
+            },
         },
     )
     assert resp.status_code == 200
 
     out = resp.get_json()
+
     assert "inputs" in out
     assert "trend" in out
-
-    assert out["trend"]["mode"] == "mean"
-    assert "mean_daily_return" in out["trend"]
-
-    # Curves
     assert "historical_equity_curve" in out
     assert "forecast_equity_curve" in out
     assert "equity_curve" in out
 
+    assert out["inputs"]["analysis_id"] == analysis_id
+    assert out["inputs"]["source"] == "baseline"
+    assert out["inputs"]["forecast"]["type"] == "deterministic"
+    assert out["inputs"]["forecast"]["days"] == forecast_days
+    assert out["inputs"]["forecast"]["drift_mode"] == "mean"
+
+    assert out["trend"]["mode"] == "mean"
+    assert "mean_daily_return" in out["trend"]
+
     assert len(out["forecast_equity_curve"]) == forecast_days
     assert len(out["equity_curve"]) == len(out["historical_equity_curve"]) + forecast_days
 
-    # Inputs echo
-    assert out["inputs"]["analysis_id"] == analysis_id
-    assert out["inputs"]["forecast"]["days"] == forecast_days
-    assert out["inputs"]["forecast"]["mode"] == "mean"
-    assert out["inputs"]["source"] == "baseline"
 
-
-def test_forecast_endpoint_rolling_echoes_window(client, port_returns_mixed):
+def test_forecast_endpoint_stochastic_returns_expected_shape(client, port_returns_mixed):
     analysis_id = _seed_analysis_in_store(port_returns_mixed)
 
-    forecast_days = 5
-    window = 2
+    forecast_days = 10
+    simulations = 500
+
     resp = client.post(
         "/api/forecast",
         json={
             "analysis_id": analysis_id,
-            "forecast": {"days": forecast_days, "mode": "rolling", "window": window},
+            "source": "baseline",
+            "forecast": {
+                "type": "stochastic",
+                "days": forecast_days,
+                "simulations": simulations,
+                "drift_mode": "mean",
+                "vol_mode": "historical",
+            },
         },
     )
     assert resp.status_code == 200
 
     out = resp.get_json()
-    assert out["trend"]["mode"] == "rolling"
-    assert out["trend"]["window"] == window
 
-    assert out["inputs"]["forecast"]["mode"] == "rolling"
-    assert out["inputs"]["forecast"]["window"] == window
+    assert "inputs" in out
+    assert "trend" in out
+    assert "volatility" in out
+    assert "historical_equity_curve" in out
+    assert "forecast_paths" in out
+    assert "terminal" in out
+    assert "drawdown" in out
+
+    assert out["inputs"]["analysis_id"] == analysis_id
+    assert out["inputs"]["source"] == "baseline"
+    assert out["inputs"]["forecast"]["type"] == "stochastic"
     assert out["inputs"]["forecast"]["days"] == forecast_days
+    assert out["inputs"]["forecast"]["simulations"] == simulations
+    assert out["inputs"]["forecast"]["drift_mode"] == "mean"
+    assert out["inputs"]["forecast"]["vol_mode"] == "historical"
+
+    assert out["trend"]["mode"] == "mean"
+    assert "mean_daily_return" in out["trend"]
+    assert "annualized_drift" in out["trend"]
+
+    assert out["volatility"]["mode"] == "historical"
+    assert "daily_volatility" in out["volatility"]
+    assert "annualized_volatility" in out["volatility"]
+
+    assert len(out["historical_equity_curve"]) > 0
+
+    fp = out["forecast_paths"]
+    for key in ["p10", "p25", "p50", "p75", "p90"]:
+        assert key in fp
+        assert len(fp[key]) == forecast_days
+
+    terminal = out["terminal"]
+    for key in [
+        "mean_terminal_value",
+        "median_terminal_value",
+        "bear_case",
+        "bull_case",
+        "probability_of_loss",
+    ]:
+        assert key in terminal
+
+    assert 0.0 <= terminal["probability_of_loss"] <= 1.0
+
+    drawdown = out["drawdown"]
+    assert "median_max_drawdown" in drawdown
+    assert "prob_drawdown_gt_20" in drawdown
+    assert drawdown["median_max_drawdown"] <= 0.0
+    assert 0.0 <= drawdown["prob_drawdown_gt_20"] <= 1.0
+
+
+def test_forecast_endpoint_stochastic_scenario_source_works(
+    client, port_returns_uptrend, port_returns_mixed
+):
+    analysis_id = _seed_shock_analysis_in_store(
+        baseline_r=port_returns_uptrend,
+        scenario_r=port_returns_mixed,
+    )
+
+    resp = client.post(
+        "/api/forecast",
+        json={
+            "analysis_id": analysis_id,
+            "source": "scenario",
+            "forecast": {
+                "type": "stochastic",
+                "days": 8,
+                "simulations": 300,
+                "drift_mode": "mean",
+                "vol_mode": "historical",
+            },
+        },
+    )
+    assert resp.status_code == 200
+
+    out = resp.get_json()
+    assert out["inputs"]["source"] == "scenario"
+    assert out["inputs"]["forecast"]["type"] == "stochastic"
+
+
+def test_forecast_endpoint_invalid_type_returns_400(client, port_returns_uptrend):
+    analysis_id = _seed_analysis_in_store(port_returns_uptrend)
+
+    resp = client.post(
+        "/api/forecast",
+        json={
+            "analysis_id": analysis_id,
+            "forecast": {
+                "type": "nonsense",
+                "days": 5,
+            },
+        },
+    )
+    assert resp.status_code == 400
+    out = resp.get_json()
+    assert "error" in out
 
 
 def test_forecast_endpoint_missing_analysis_id_returns_400(client):
-    resp = client.post("/api/forecast", json={"forecast": {"days": 5}})
+    resp = client.post(
+        "/api/forecast",
+        json={
+            "forecast": {
+                "type": "deterministic",
+                "days": 5,
+                "drift_mode": "mean",
+            }
+        },
+    )
     assert resp.status_code == 400
     out = resp.get_json()
     assert "error" in out
@@ -302,62 +436,18 @@ def test_forecast_endpoint_missing_analysis_id_returns_400(client):
 def test_forecast_endpoint_expired_or_unknown_analysis_id_returns_400(client):
     resp = client.post(
         "/api/forecast",
-        json={"analysis_id": "doesnotexist", "forecast": {"days": 5}},
+        json={
+            "analysis_id": "doesnotexist",
+            "forecast": {
+                "type": "deterministic",
+                "days": 5,
+                "drift_mode": "mean",
+            },
+        },
     )
     assert resp.status_code == 400
     out = resp.get_json()
     assert "error" in out
-
-
-def test_forecast_endpoint_invalid_mode_returns_400(client, port_returns_uptrend):
-    analysis_id = _seed_analysis_in_store(port_returns_uptrend)
-
-    resp = client.post(
-        "/api/forecast",
-        json={"analysis_id": analysis_id, "forecast": {"days": 5, "mode": "badmode"}},
-    )
-    assert resp.status_code == 400
-    out = resp.get_json()
-    assert "error" in out
-
-
-def test_forecast_endpoint_ewma_echoes_alpha(client, port_returns_mixed):
-    analysis_id = _seed_analysis_in_store(port_returns_mixed)
-
-    resp = client.post(
-        "/api/forecast",
-        json={
-            "analysis_id": analysis_id,
-            "forecast": {"days": 5, "mode": "ewma", "alpha": 0.5},
-        },
-    )
-    assert resp.status_code == 200
-    out = resp.get_json()
-
-    assert out["trend"]["mode"] == "ewma"
-    assert out["trend"]["alpha"] == pytest.approx(0.5, abs=1e-12)
-    assert out["inputs"]["forecast"]["mode"] == "ewma"
-    assert out["inputs"]["forecast"]["alpha"] == pytest.approx(0.5, abs=1e-12)
-
-
-
-def test_forecast_endpoint_ewma_defaults_lambda(client, port_returns_mixed):
-    analysis_id = _seed_analysis_in_store(port_returns_mixed)
-
-    resp = client.post(
-        "/api/forecast",
-        json={
-            "analysis_id": analysis_id,
-            "forecast": {"days": 5, "mode": "ewma"},
-        },
-    )
-    assert resp.status_code == 200
-    out = resp.get_json()
-
-    assert out["trend"]["mode"] == "ewma"
-    assert out["trend"]["lambda"] == pytest.approx(0.94, abs=1e-12)
-    assert out["inputs"]["forecast"]["mode"] == "ewma"
-    assert out["inputs"]["forecast"]["lambda"] == pytest.approx(0.94, abs=1e-12)
 
 
 def _make_curve(start_date: str, values: list[float]) -> pd.Series:
@@ -366,14 +456,12 @@ def _make_curve(start_date: str, values: list[float]) -> pd.Series:
 
 
 def test_forecast_summary_basic_fields_and_math():
-    # Last historical value = 100, forecast goes 110, 121, 133.1 (10% daily)
     hist = _make_curve("2025-01-01", [90.0, 100.0])
     fc = _make_curve("2025-01-03", [110.0, 121.0, 133.1])
 
     trend = {"mode": "mean", "mean_daily_return": 0.10}
     out = forecast_summary(hist_curve=hist, forecast_curve=fc, trend=trend, target_multiple=1.10)
 
-    # Shape
     expected_keys = {
         "last_historical_value",
         "forecast_end_value",
@@ -389,18 +477,12 @@ def test_forecast_summary_basic_fields_and_math():
     assert out["last_historical_value"] == pytest.approx(100.00, abs=1e-9)
     assert out["forecast_end_value"] == pytest.approx(133.10, abs=1e-9)
 
-    # total return should be (end / last_hist) - 1
     expected_total = (133.1 / 100.0) - 1.0
     assert out["forecast_total_return"] == pytest.approx(expected_total, abs=1e-6)
 
-    # abs change should be end - last_hist
     assert out["forecast_abs_change"] == pytest.approx(33.10, abs=1e-9)
-
-    # target_multiple 1.10 should be hit on the first forecast day (110)
     assert out["target_multiple"] == pytest.approx(1.10, abs=1e-12)
     assert out["days_to_target_multiple"] == 1
-
-    # trend passthrough
     assert out["trend"]["mode"] == "mean"
 
 

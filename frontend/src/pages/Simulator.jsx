@@ -43,7 +43,10 @@ export default function SimulatorPage() {
   const [forecast, setForecast] = useState(null);
   const [stressForecast, setStressForecast] = useState(null);
   const [forecastDays, setForecastDays] = useState(30);
-  const [forecastMode, setForecastMode] = useState("mean"); // "mean" | "rolling" | "ewma"
+  const [forecastType, setForecastType] = useState("deterministic");
+  const [driftMode, setDriftMode] = useState("mean");
+  const [volMode, setVolMode] = useState("historical");
+  const [simulations, setSimulations] = useState(1000);
   const [rollingWindow, setRollingWindow] = useState(60);
   const [ewmaLambda, setEwmaLambda] = useState(0.94);
 
@@ -106,23 +109,46 @@ export default function SimulatorPage() {
   async function handleRunForecast() {
     setError("");
     setStressForecast(null);
+
     if (!analysis?.analysis_id) {
       setError("Run analysis first.");
       return;
     }
+
     try {
+      const usesRolling =
+        driftMode === "rolling" ||
+        (forecastType === "stochastic" && volMode === "rolling");
+
+      const usesEwma =
+        driftMode === "ewma" ||
+        (forecastType === "stochastic" && volMode === "ewma");
+
       const result = await runForecast({
         analysisId: analysis.analysis_id,
+        source: "baseline",
+        type: forecastType,
         days: forecastDays,
-        mode: forecastMode,
-        window: forecastMode === "rolling" ? rollingWindow : undefined,
-        lambda: forecastMode === "ewma" ? ewmaLambda : undefined,
+        driftMode,
+        volMode: forecastType === "stochastic" ? volMode : undefined,
+        simulations: forecastType === "stochastic" ? simulations : undefined,
+        window: usesRolling ? rollingWindow : undefined,
+        lambda: usesEwma ? ewmaLambda : undefined,
       });
+
       setForecast(result);
-      console.log("analysis curve", analysis.equity_curve?.length);
-      console.log("forecast curve", result.equity_curve?.length);
-      console.log("forecast hist", result.historical_equity_curve?.length);
-      console.log("forecast fc", result.forecast_equity_curve?.length);
+
+      console.log("forecast type", result?.inputs?.forecast?.type);
+      console.log("historical curve", result?.historical_equity_curve?.length);
+
+      if (result?.inputs?.forecast?.type === "deterministic") {
+        console.log("forecast curve", result?.equity_curve?.length);
+        console.log("forecast fc", result?.forecast_equity_curve?.length);
+      } else {
+        console.log("forecast p10", result?.forecast_paths?.p10?.length);
+        console.log("forecast p50", result?.forecast_paths?.p50?.length);
+        console.log("forecast p90", result?.forecast_paths?.p90?.length);
+      }
     } catch (err) {
       setError(err.message || "Forecast failed.");
     }
@@ -133,31 +159,46 @@ export default function SimulatorPage() {
     setForecast(null);
 
     try {
-      // IMPORTANT: use the stress analysis_id (the one stored in analysis_store for kind="analyze_shock")
       const stressId = stress?.analysis_id || stress?.inputs?.analysis_id;
-      if (!stressId)
+      if (!stressId) {
         throw new Error("Stress analysis_id missing. Re-run stress test.");
+      }
+
+      const usesRolling =
+        driftMode === "rolling" ||
+        (forecastType === "stochastic" && volMode === "rolling");
+
+      const usesEwma =
+        driftMode === "ewma" ||
+        (forecastType === "stochastic" && volMode === "ewma");
+
+      const commonArgs = {
+        type: forecastType,
+        days: forecastDays,
+        driftMode,
+        volMode: forecastType === "stochastic" ? volMode : undefined,
+        simulations: forecastType === "stochastic" ? simulations : undefined,
+        window: usesRolling ? rollingWindow : undefined,
+        lambda: usesEwma ? ewmaLambda : undefined,
+      };
 
       const [baselineFc, scenarioFc] = await Promise.all([
         runForecast({
           analysisId: stressId,
-          days: forecastDays,
           source: "baseline",
-          mode: forecastMode,
-          window: forecastMode === "rolling" ? rollingWindow : undefined,
-          lambda: forecastMode === "ewma" ? ewmaLambda : undefined,
+          ...commonArgs,
         }),
         runForecast({
           analysisId: stressId,
-          days: forecastDays,
           source: "scenario",
-          mode: forecastMode,
-          window: forecastMode === "rolling" ? rollingWindow : undefined,
-          lambda: forecastMode === "ewma" ? ewmaLambda : undefined,
+          ...commonArgs,
         }),
       ]);
 
-      setStressForecast({ baseline: baselineFc, scenario: scenarioFc });
+      setStressForecast({
+        baseline: baselineFc,
+        scenario: scenarioFc,
+      });
     } catch (err) {
       setError(err.message || "Stress forecast failed.");
     }
@@ -228,10 +269,16 @@ export default function SimulatorPage() {
           {/* Render forecast controls only if we have analysis results (need analysis_id) */}
           {analysis && (
             <ForecastControls
+              forecastType={forecastType}
+              setForecastType={setForecastType}
               forecastDays={forecastDays}
               setForecastDays={setForecastDays}
-              forecastMode={forecastMode}
-              setForecastMode={setForecastMode}
+              driftMode={driftMode}
+              setDriftMode={setDriftMode}
+              volMode={volMode}
+              setVolMode={setVolMode}
+              simulations={simulations}
+              setSimulations={setSimulations}
               rollingWindow={rollingWindow}
               setRollingWindow={setRollingWindow}
               ewmaLambda={ewmaLambda}
@@ -255,10 +302,16 @@ export default function SimulatorPage() {
 
           {stress && (
             <ForecastControls
+              forecastType={forecastType}
+              setForecastType={setForecastType}
               forecastDays={forecastDays}
               setForecastDays={setForecastDays}
-              forecastMode={forecastMode}
-              setForecastMode={setForecastMode}
+              driftMode={driftMode}
+              setDriftMode={setDriftMode}
+              volMode={volMode}
+              setVolMode={setVolMode}
+              simulations={simulations}
+              setSimulations={setSimulations}
               rollingWindow={rollingWindow}
               setRollingWindow={setRollingWindow}
               ewmaLambda={ewmaLambda}

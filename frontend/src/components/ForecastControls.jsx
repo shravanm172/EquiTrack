@@ -1,8 +1,14 @@
 export default function ForecastControls({
+  forecastType,
+  setForecastType,
   forecastDays,
   setForecastDays,
-  forecastMode,
-  setForecastMode,
+  driftMode,
+  setDriftMode,
+  volMode,
+  setVolMode,
+  simulations,
+  setSimulations,
   rollingWindow,
   setRollingWindow,
   ewmaLambda,
@@ -10,9 +16,27 @@ export default function ForecastControls({
   onRun,
   buttonLabel = "Run Forecast",
 }) {
+  const usesRolling =
+    driftMode === "rolling" ||
+    (forecastType === "stochastic" && volMode === "rolling");
+
+  const usesEwma =
+    driftMode === "ewma" ||
+    (forecastType === "stochastic" && volMode === "ewma");
+
   return (
     <div className="panel-block forecast-controls">
-      <label className="form-label">Forecast days</label>
+      <label className="form-label">Forecast type</label>
+      <select
+        className="form-input"
+        value={forecastType}
+        onChange={(e) => setForecastType(e.target.value)}
+      >
+        <option value="deterministic">Deterministic</option>
+        <option value="stochastic">Stochastic (Monte Carlo)</option>
+      </select>
+
+      <label className="form-label form-label--spaced">Forecast days</label>
       <input
         className="form-input"
         type="number"
@@ -21,17 +45,49 @@ export default function ForecastControls({
         onChange={(e) => setForecastDays(Number(e.target.value))}
       />
 
-      <label className="form-label form-label--spaced">Mode</label>
+      {forecastType === "stochastic" && (
+        <>
+          <label className="form-label form-label--spaced">Simulations</label>
+          <input
+            className="form-input"
+            type="number"
+            min={1}
+            step={100}
+            value={simulations}
+            onChange={(e) => setSimulations(Number(e.target.value))}
+          />
+        </>
+      )}
+
+      <label className="form-label form-label--spaced">Drift mode</label>
       <select
-        value={forecastMode}
-        onChange={(e) => setForecastMode(e.target.value)}
+        className="form-input"
+        value={driftMode}
+        onChange={(e) => setDriftMode(e.target.value)}
       >
         <option value="mean">Mean (full sample)</option>
         <option value="rolling">Rolling mean</option>
         <option value="ewma">EWMA</option>
       </select>
 
-      {forecastMode === "rolling" && (
+      {forecastType === "stochastic" && (
+        <>
+          <label className="form-label form-label--spaced">
+            Volatility mode
+          </label>
+          <select
+            className="form-input"
+            value={volMode}
+            onChange={(e) => setVolMode(e.target.value)}
+          >
+            <option value="historical">Historical volatility</option>
+            <option value="rolling">Rolling volatility</option>
+            <option value="ewma">EWMA volatility</option>
+          </select>
+        </>
+      )}
+
+      {usesRolling && (
         <>
           <label className="form-label form-label--spaced">
             Rolling window (days)
@@ -47,7 +103,7 @@ export default function ForecastControls({
         </>
       )}
 
-      {forecastMode === "ewma" && (
+      {usesEwma && (
         <>
           <label className="form-label form-label--spaced">
             EWMA lambda (0–1)
@@ -62,7 +118,7 @@ export default function ForecastControls({
             onChange={(e) => setEwmaLambda(Number(e.target.value))}
           />
           <div className="form-help">
-            Higher λ = more weight on recent returns. Default 0.94.
+            Higher λ = more weight on recent observations. Default 0.94.
           </div>
         </>
       )}

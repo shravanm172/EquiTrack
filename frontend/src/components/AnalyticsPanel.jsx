@@ -9,6 +9,7 @@ import {
 
 function RiskMetricsBlock({ metrics }) {
   if (!metrics) return null;
+
   return (
     <>
       <MetricRow
@@ -74,10 +75,65 @@ function ForecastSummaryBlock({ summary }) {
             ? "—"
             : `${summary.days_to_target_multiple} days`
         }
-        tooltip={`The number of days it takes for the portfolio to reach a target multiple of its last historical value. The default target multiple is 1.1 (i.e. a 10% gain)`}
+        tooltip="The number of days it takes for the portfolio to reach a target multiple of its last historical value."
       />
     </>
   );
+}
+
+function StochasticForecastSummaryBlock({ terminal, drawdown, volatility }) {
+  if (!terminal && !drawdown) return null;
+
+  const fmtDrawdown = (x) => (x == null ? "—" : `${(-x * 100).toFixed(2)}%`);
+
+  return (
+    <>
+      <MetricRow
+        label="Mean Terminal Value"
+        value={formatMoney(terminal?.mean_terminal_value)}
+        tooltip="The average ending portfolio value across all Monte Carlo simulations."
+      />
+      <MetricRow
+        label="Median Terminal Value"
+        value={formatMoney(terminal?.median_terminal_value)}
+        tooltip="The median ending portfolio value across all Monte Carlo simulations."
+      />
+      <MetricRow
+        label="Bear Case"
+        value={formatMoney(terminal?.bear_case)}
+        tooltip="A downside scenario based on the lower tail of simulated outcomes."
+      />
+      <MetricRow
+        label="Bull Case"
+        value={formatMoney(terminal?.bull_case)}
+        tooltip="An upside scenario based on the upper tail of simulated outcomes."
+      />
+      <MetricRow
+        label="Probability of Loss"
+        value={formatPct(terminal?.probability_of_loss)}
+        tooltip="The fraction of simulations where the portfolio ends below its starting forecast value."
+      />
+      <MetricRow
+        label="Median Max Drawdown"
+        value={fmtDrawdown(drawdown?.median_max_drawdown)}
+        tooltip="The typical worst peak-to-trough decline across simulated paths."
+      />
+      <MetricRow
+        label="Prob. Drawdown > 20%"
+        value={formatPct(drawdown?.prob_drawdown_gt_20)}
+        tooltip="The fraction of simulations where the portfolio experiences a drawdown of at least 20%."
+      />
+      <MetricRow
+        label="Annualized Volatility"
+        value={formatPct(volatility?.annualized_volatility)}
+        tooltip="The forecast volatility parameter used in the stochastic simulation, annualized."
+      />
+    </>
+  );
+}
+
+function getForecastType(fc) {
+  return fc?.inputs?.forecast?.type || "deterministic";
 }
 
 export default function AnalyticsPanel({
@@ -86,28 +142,65 @@ export default function AnalyticsPanel({
   forecast,
   stressForecast,
 }) {
-  // ---- Determine what’s available ----
   const hasAnalysis = !!analysis?.metrics;
 
   const hasStress = !!stress?.baseline?.metrics && !!stress?.scenario?.metrics;
   const hasStressDelta = !!stress?.delta?.metrics;
 
-  const hasForecast = !!forecast?.summary;
+  const forecastType = getForecastType(forecast);
+  const stressBaselineForecastType = getForecastType(stressForecast?.baseline);
+  const stressScenarioForecastType = getForecastType(stressForecast?.scenario);
 
-  const hasStressForecast =
-    !!stressForecast?.baseline?.summary && !!stressForecast?.scenario?.summary;
+  const hasDeterministicForecast =
+    forecastType === "deterministic" && !!forecast?.summary;
 
-  // ---- Compute forecast deltas that aren’t provided by backend ----
-  const forecastDelta = hasStressForecast
+  const hasStochasticForecast =
+    forecastType === "stochastic" &&
+    (!!forecast?.terminal || !!forecast?.drawdown);
+
+  const hasStressDeterministicForecast =
+    stressBaselineForecastType === "deterministic" &&
+    stressScenarioForecastType === "deterministic" &&
+    !!stressForecast?.baseline?.summary &&
+    !!stressForecast?.scenario?.summary;
+
+  const hasStressStochasticForecast =
+    stressBaselineForecastType === "stochastic" &&
+    stressScenarioForecastType === "stochastic" &&
+    !!stressForecast?.baseline?.terminal &&
+    !!stressForecast?.scenario?.terminal;
+
+  const deterministicForecastDelta = hasStressDeterministicForecast
     ? diffObjects(
         stressForecast.baseline.summary,
         stressForecast.scenario.summary,
       )
     : null;
 
-  // When stress forecast exists, force 2 rows:
-  // Row 1 = risk metrics cards, Row 2 = forecast cards
-  const isStressForecastMode = hasStress && hasStressForecast;
+  const stochasticTerminalDelta = hasStressStochasticForecast
+    ? diffObjects(
+        stressForecast.baseline.terminal,
+        stressForecast.scenario.terminal,
+      )
+    : null;
+
+  const stochasticDrawdownDelta = hasStressStochasticForecast
+    ? diffObjects(
+        stressForecast.baseline.drawdown,
+        stressForecast.scenario.drawdown,
+      )
+    : null;
+
+  const stochasticVolatilityDelta = hasStressStochasticForecast
+    ? diffObjects(
+        stressForecast.baseline.volatility,
+        stressForecast.scenario.volatility,
+      )
+    : null;
+
+  const isStressForecastMode =
+    hasStress &&
+    (hasStressDeterministicForecast || hasStressStochasticForecast);
 
   return (
     <div className="analytics-panel">
@@ -118,9 +211,19 @@ export default function AnalyticsPanel({
         </AnalyticsCard>
       )}
 
-      {hasForecast && !hasStressForecast && (
+      {hasDeterministicForecast && !hasStressDeterministicForecast && (
         <AnalyticsCard title="Forecast Summary">
           <ForecastSummaryBlock summary={forecast.summary} />
+        </AnalyticsCard>
+      )}
+
+      {hasStochasticForecast && !hasStressStochasticForecast && (
+        <AnalyticsCard title="Stochastic Forecast Summary">
+          <StochasticForecastSummaryBlock
+            terminal={forecast.terminal}
+            drawdown={forecast.drawdown}
+            volatility={forecast.volatility}
+          />
         </AnalyticsCard>
       )}
 
@@ -144,17 +247,51 @@ export default function AnalyticsPanel({
           </div>
 
           <div className="analytics-row analytics-row--forecast">
-            <AnalyticsCard title="Forecast Summary (Baseline)">
-              <ForecastSummaryBlock summary={stressForecast.baseline.summary} />
-            </AnalyticsCard>
+            {hasStressDeterministicForecast ? (
+              <>
+                <AnalyticsCard title="Forecast Summary (Baseline)">
+                  <ForecastSummaryBlock
+                    summary={stressForecast.baseline.summary}
+                  />
+                </AnalyticsCard>
 
-            <AnalyticsCard title="Forecast Summary (Scenario)">
-              <ForecastSummaryBlock summary={stressForecast.scenario.summary} />
-            </AnalyticsCard>
+                <AnalyticsCard title="Forecast Summary (Scenario)">
+                  <ForecastSummaryBlock
+                    summary={stressForecast.scenario.summary}
+                  />
+                </AnalyticsCard>
 
-            <AnalyticsCard title="Forecast Summary Δ (Scenario − Baseline)">
-              <ForecastSummaryBlock summary={forecastDelta} />
-            </AnalyticsCard>
+                <AnalyticsCard title="Forecast Summary Δ (Scenario − Baseline)">
+                  <ForecastSummaryBlock summary={deterministicForecastDelta} />
+                </AnalyticsCard>
+              </>
+            ) : (
+              <>
+                <AnalyticsCard title="Stochastic Forecast Summary (Baseline)">
+                  <StochasticForecastSummaryBlock
+                    terminal={stressForecast.baseline.terminal}
+                    drawdown={stressForecast.baseline.drawdown}
+                    volatility={stressForecast.baseline.volatility}
+                  />
+                </AnalyticsCard>
+
+                <AnalyticsCard title="Stochastic Forecast Summary (Scenario)">
+                  <StochasticForecastSummaryBlock
+                    terminal={stressForecast.scenario.terminal}
+                    drawdown={stressForecast.scenario.drawdown}
+                    volatility={stressForecast.scenario.volatility}
+                  />
+                </AnalyticsCard>
+
+                <AnalyticsCard title="Stochastic Forecast Δ (Scenario − Baseline)">
+                  <StochasticForecastSummaryBlock
+                    terminal={stochasticTerminalDelta}
+                    drawdown={stochasticDrawdownDelta}
+                    volatility={stochasticVolatilityDelta}
+                  />
+                </AnalyticsCard>
+              </>
+            )}
           </div>
         </>
       ) : (
@@ -179,7 +316,7 @@ export default function AnalyticsPanel({
           )}
 
           {/* ---- Stress forecast only (edge case) ---- */}
-          {hasStressForecast && (
+          {hasStressDeterministicForecast && (
             <>
               <AnalyticsCard title="Forecast Summary (Baseline)">
                 <ForecastSummaryBlock
@@ -194,7 +331,35 @@ export default function AnalyticsPanel({
               </AnalyticsCard>
 
               <AnalyticsCard title="Forecast Summary Δ (Scenario − Baseline)">
-                <ForecastSummaryBlock summary={forecastDelta} />
+                <ForecastSummaryBlock summary={deterministicForecastDelta} />
+              </AnalyticsCard>
+            </>
+          )}
+
+          {hasStressStochasticForecast && (
+            <>
+              <AnalyticsCard title="Stochastic Forecast Summary (Baseline)">
+                <StochasticForecastSummaryBlock
+                  terminal={stressForecast.baseline.terminal}
+                  drawdown={stressForecast.baseline.drawdown}
+                  volatility={stressForecast.baseline.volatility}
+                />
+              </AnalyticsCard>
+
+              <AnalyticsCard title="Stochastic Forecast Summary (Scenario)">
+                <StochasticForecastSummaryBlock
+                  terminal={stressForecast.scenario.terminal}
+                  drawdown={stressForecast.scenario.drawdown}
+                  volatility={stressForecast.scenario.volatility}
+                />
+              </AnalyticsCard>
+
+              <AnalyticsCard title="Stochastic Forecast Δ (Scenario − Baseline)">
+                <StochasticForecastSummaryBlock
+                  terminal={stochasticTerminalDelta}
+                  drawdown={stochasticDrawdownDelta}
+                  volatility={stochasticVolatilityDelta}
+                />
               </AnalyticsCard>
             </>
           )}

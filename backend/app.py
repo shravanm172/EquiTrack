@@ -9,7 +9,7 @@ from providers.market_data import fetch_price_history
 from services.analysis_service import analyze_portfolio
 from services.stress_service import analyze_with_shock
 from services.store_singleton import analysis_store
-from engines.forecast_engine import forecast_portfolio
+from services.forecast_service import forecast_portfolio
 
 
 def create_app() -> Flask:
@@ -145,18 +145,20 @@ def create_app() -> Flask:
     def forecast():
         if request.method == "OPTIONS":
             return "", 200
+
         payload = request.get_json(silent=True) or {}
+
         try:
             result = forecast_portfolio(payload)
             return jsonify(result)
+
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         except Exception:
             return jsonify({"error": "Internal server error"}), 500
 
-    
-    
     return app
+
 
 # WSGI entrypoint for gunicorn
 app = create_app()
