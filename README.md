@@ -1,10 +1,8 @@
 # EquiTrack
 
-### Video Demo: https://youtu.be/rMnUNgCTM6U
-
 **EquiTrack** is a full-stack portfolio analytics and market simulation platform designed to analyze, stress test, and forecast equity portfolio performance across varying market regimes.
 
-It combines historical market data, deterministic portfolio analytics, stress-scenario transforms, and forward projections in a modular Flask backend + React frontend architecture.
+It combines historical market data, deterministic  portfolio analytics, stress-scenario transforms, and stochastic Monte Carlo forecasting in a modular Flask backend + React frontend architecture.
 ---
 
 ## Core Features
@@ -12,7 +10,7 @@ It combines historical market data, deterministic portfolio analytics, stress-sc
 ### Portfolio Analytics
 
 - Portfolio defined by holdings (tickers + shares)
-- Historical price data over a user-selected analysis window
+- Historical price data over a user-defined analysis window
 - Analysis pipeline:
   1. Prices → daily returns
   2. Asset returns → weighted portfolio returns
@@ -22,52 +20,69 @@ It combines historical market data, deterministic portfolio analytics, stress-sc
   - Annualized volatility
   - Maximum drawdown
   - Sharpe ratio
+These basline metrics serve as the foundation for stress testing and forward simulations
 
 ### Stress Testing Scenarios
-
+Equitrack supports deterministic stress transforms applied directly to historical price series
 Supported scenario transforms:
 
 1. **Permanent Shock**
    - Instant price shock on a chosen date
-   - Price level remains shifted after shock date
+   - Price level remains permanently shifted after shock date
 
 2. **Linear Rebound Shock**
    - Initial shock
-   - Linear recovery back toward baseline over configurable days
+   - Linear recovery back to baseline over configurable days
 
 3. **Regime Shift (Volatility + Drift)**
-   - Volatility multiplier on returns
-   - Drift shift on returns
+   - Volatility multiplier applied to returns
+   - Drift shift applied to returns
    - Useful for prolonged bullish/bearish regime simulation
 
-### Deterministic Forecasting
+### Stochastic Forecasting
 
-Forecasting extends historical equity behavior using model-driven deterministic returns.
-Forecasting operates deterministically (non-stochastic) and is designed as a foundation for future Monte Carlo simulation extensions.
+EquiTrack includes a Monte Carlo simulation engine for forecasting potential future portfolio paths based on historical return characteristics.
 
-Supported forecast modes:
+Rather than projecting a single deterministic path, the system generates many possible future trajectories, allowing the distribution of potential outcomes to be analyzed.
 
-1. **Mean** (full-sample average return)
-2. **Rolling mean** (windowed average)
-3. **EWMA** (lambda/alpha-weighted estimate)
+## Simulation Model
+The simulation engine models future daily returns using parameters derived from historical data:
+  - Expected return (mean)
+  - Volatility estimate (currently EWMA based)
 
-Forecasts can run on baseline and stress outputs, and are visualized alongside historical equity curves.
+Each simulation produces a potential future equity curve.
 
----
+Running N simulations produces a distribution of portfolio outcomes.
+
+## Forecasting Outputs
+From the simulated distribution of equity curves, EquiTrack computes forecast statistics including:
+  - Median projected equity curve
+  - Percentile bands (e.g., 5th / 95th percentiles)
+  - Forecasted return metrics
+  - Forecasted volatility estimates
+  - Projected drawdown behavior
+
+These outputs allow users to visualize expected portfolio growth as well as downside risk under stochastic market dynamics.
+
+# Visualization
+Forecast results are visualized in the frontend using interactive equity curves, including:
+  - Historical baseline equity curve
+  - Stress scenario equity curve (if applied)
+  - Forecasted equity trajectory
+  - Optional percentile confidence bands
+
+Charts are rendered using Recharts and automatically update when forecasts are generated.
+
 
 ## Architecture Overview
 
-The system is intentionaly layered to separate pure analytical logic from orchestration and API exposure.
+The system is intentionaly layered to separate pure analytical computation from API orchestration and exposure.
 Backend modules align with current code layout:
 
 - `services/analysis_service.py`
   - Baseline portfolio analysis orchestration
 - `services/stress_service.py`
   - Baseline/scenario stress analysis and metric deltas
-- `engines/scenario_engine.py`
-  - Scenario transformation logic
-- `engines/forecast_engine.py`
-  - Deterministic forecasting logic
 - `services/analysis_store.py`
   - Stores completed analysis artifacts for downstream forecast calls
 
@@ -204,4 +219,4 @@ This ensures code correctness before deployment and enforces disciplined develop
 
 ### Responsiveness
 
-The EquiTrack interface is currently optimized for desktop usage. Mobile responsiveness is planned for a future iteration.
+The EquiTrack interface is currently optimized for desktop usage. Mobile responsiveness/compatibility is planned for a future iteration.
