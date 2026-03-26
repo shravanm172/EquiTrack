@@ -36,9 +36,11 @@ def create_app() -> Flask:
         return jsonify(analysis_store.stats())
     
     @app.route("/api/holdings/validate", methods=["POST", "OPTIONS"])
+    @app.route("/api/holdings/validate", methods=["POST", "OPTIONS"])
     def validate_holding():
         if request.method == "OPTIONS":
             return "", 200
+
         payload = request.get_json(silent=True) or {}
 
         ticker = str(payload.get("ticker", "")).strip().upper()
@@ -46,14 +48,24 @@ def create_app() -> Flask:
         lookahead_days = int(payload.get("lookahead_days", 7))
 
         if not ticker:
-            return jsonify({"valid": False, "reason": "ticker is required"}), 400
+            return jsonify({
+                "valid": False,
+                "reason": "ticker is required"
+            }), 400
+
         if not requested_date:
-            return jsonify({"valid": False, "reason": "buy_date is required"}), 400
+            return jsonify({
+                "valid": False,
+                "reason": "buy_date is required"
+            }), 400
 
         try:
             d0 = datetime.strptime(requested_date, "%Y-%m-%d")
         except ValueError:
-            return jsonify({"valid": False, "reason": "buy_date must be YYYY-MM-DD"}), 400
+            return jsonify({
+                "valid": False,
+                "reason": "buy_date must be YYYY-MM-DD"
+            }), 400
 
         if lookahead_days < 1:
             lookahead_days = 1
@@ -70,7 +82,8 @@ def create_app() -> Flask:
                     "valid": False,
                     "ticker": ticker,
                     "requested_date": requested_date,
-                    "reason": "no price data returned in lookahead window",
+                    "reason": "no_price_data",
+                    "message": "No price data returned in the lookahead window.",
                 }), 200
 
             s = prices[ticker].dropna()
@@ -79,7 +92,8 @@ def create_app() -> Flask:
                     "valid": False,
                     "ticker": ticker,
                     "requested_date": requested_date,
-                    "reason": "no valid prices returned in lookahead window",
+                    "reason": "no_valid_prices",
+                    "message": "No valid prices returned in the lookahead window.",
                 }), 200
 
             as_of_dt = s.index[0]
@@ -98,13 +112,28 @@ def create_app() -> Flask:
                 "price": round(px, 6),
                 "note": note,
             }), 200
-        except Exception:
+
+        except Exception as e:
+            msg = str(e).lower()
+
+            if "rate limit" in msg or "too many requests" in msg:
+                return jsonify({
+                    "valid": None,
+                    "provider_error": True,
+                    "ticker": ticker,
+                    "requested_date": requested_date,
+                    "reason": "rate_limited",
+                    "message": "Validation provider is temporarily rate-limited. Please try again shortly.",
+                }), 503
+
             return jsonify({
-                "valid": False,
+                "valid": None,
+                "provider_error": True,
                 "ticker": ticker,
                 "requested_date": requested_date,
-                "reason": "Unspecified provider error. Check ticker.",
-            }), 200
+                "reason": "provider_unavailable",
+                "message": "Could not validate ticker because the market data provider is temporarily unavailable.",
+            }), 503
 
     @app.route("/api/analyze", methods=["POST", "OPTIONS"])
     def analyze():

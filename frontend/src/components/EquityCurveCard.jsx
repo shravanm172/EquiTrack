@@ -110,7 +110,7 @@ function BandToggles({
           checked={showBaselineBand}
           onChange={(e) => setShowBaselineBand(e.target.checked)}
         />
-        Baseline band
+        Uncertainty Fan
       </label>
 
       {hasScenario && (
