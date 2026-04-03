@@ -53,7 +53,7 @@ def generate_garch_paths(
     T: float,
     n_steps: int,
     n_paths: int,
-    nu: float = 8.0,
+    nu: float,
     random_seed: int | None = None,
 ) -> GarchSimulationResult:
     """
@@ -95,6 +95,7 @@ def generate_garch_paths(
             "alpha": float(alpha),
             "beta": float(beta),
             "h0": float(h0),
+            "nu": float(nu),
             "T": float(T),
             "N": int(n_steps),
             "n": int(n_paths),
@@ -278,7 +279,7 @@ def run_stochastic_forecast(*,model, s0, mu=None,  T, N, n, sigma=None,heston_pa
 
         result = generate_garch_paths(
             S0=s0,
-            mu=gp["mu"],
+            mu=garch_mu,
             omega=gp["omega"],
             alpha=gp["alpha"],
             beta=gp["beta"],
@@ -286,6 +287,7 @@ def run_stochastic_forecast(*,model, s0, mu=None,  T, N, n, sigma=None,heston_pa
             T=T,
             n_steps=N,
             n_paths=n,
+            nu=gp["nu"],
             random_seed=random_seed,
         )
 

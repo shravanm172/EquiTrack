@@ -34,7 +34,7 @@ def main():
     horizon = 20
     train_window=252 #rolling window
     step=horizon
-    n_paths=300 #number of paths to simulate at each step
+    n_paths=1000 #number of paths to simulate at each step
     random_seed=42
 
     fetch_start = "2017-01-01"
@@ -113,6 +113,7 @@ def main():
             T=horizon / 252.0,   # metadata only if you still keep T
             n_steps=horizon,
             n_paths=n_paths,
+            nu=params.nu,
             random_seed=random_seed+forecast_start_idx,
         )
 
@@ -124,7 +125,7 @@ def main():
         terminal_returns = (sim.prices[:, -1] / sim.prices[:, 0]) - 1.0
 
         # use the variances that generated each simulated return
-        forecast_var_paths = np.sum(sim.variances[:, :-1], axis=1)
+        forecast_var_paths = np.sum(sim.variances[:, 1:], axis=1)
         forecast_var_mean = float(np.mean(forecast_var_paths))
 
         # interval / VaR estimates
@@ -160,6 +161,7 @@ def main():
             "omega": float(params.omega),
             "alpha": float(params.alpha),
             "beta": float(params.beta),
+            "nu": float(params.nu),
             "h_last": h_last,
 
             "forecast_var": forecast_var_mean,
@@ -180,6 +182,9 @@ def main():
         })
 
     backtest_df = pd.DataFrame(results)
+
+    
+    print(backtest_df[['alpha','beta','nu']].tail(10))
 
     print("\n=== GARCH Rolling Backtest Summary ===")
     print(f"Number of folds: {len(backtest_df)}")
