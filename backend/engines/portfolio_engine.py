@@ -6,13 +6,72 @@ import numpy as np
 
 def prices_to_returns(prices: pd.DataFrame) -> pd.DataFrame:
     """
-    Convert price levels to daily simple returns.
+    Convert prices to daily simple (arithmetic) returns.
 
     r_t = (P_t / P_{t-1}) - 1
     """
     returns = prices.pct_change()
     returns = returns.dropna(how="all")
     return returns
+
+def prices_to_log_returns(prices: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converts prices to daily log returns
+
+    l_t = log(P_t / P_{t-1})
+    """
+    if prices.empty:
+        raise ValueError("prices must not be empty.")
+
+    return np.log(prices / prices.shift(1)).dropna(how="all")
+
+
+def portfolio_value_series(prices: pd.DataFrame, weights: dict[str, float]) -> pd.Series:
+    """
+    Build a normalized portfolio value series from asset prices and fixed weights.
+
+    P_t = sum_i w_i * (S_i,t / S_i,0)
+
+    The series starts at 1.0 if weights sum to 1.
+    """
+    if prices.empty:
+        raise ValueError("prices must not be empty.")
+
+    w = pd.Series({k.upper(): float(v) for k, v in weights.items()}, dtype="float64")
+
+    cols = [c for c in prices.columns if c.upper() in set(w.index)]
+    if not cols:
+        raise ValueError("None of the portfolio tickers exist in the price data.")
+
+    w = w.reindex([c.upper() for c in cols])
+
+    total = float(w.sum())
+    if total == 0:
+        raise ValueError("Weights sum to 0.")
+    w = w / total
+
+    p = prices[cols].copy().dropna(how="all")
+    p = p.ffill().dropna()
+
+    normalized = p / p.iloc[0]
+
+    w_aligned = pd.Series([w[c.upper()] for c in cols], index=cols, dtype="float64")
+
+    portfolio_value = (normalized * w_aligned).sum(axis=1)
+    portfolio_value.name = "portfolio_value"
+    return portfolio_value
+
+
+def portfolio_log_returns_from_value(portfolio_value: pd.Series) -> pd.Series:
+    """
+    Compute portfolio log returns from a portfolio value series.
+    """
+    if portfolio_value.empty:
+        raise ValueError("portfolio_value must not be empty.")
+
+    log_returns = np.log(portfolio_value / portfolio_value.shift(1)).dropna()
+    log_returns.name = "portfolio_log_return"
+    return log_returns
 
 
 def portfolio_returns(asset_returns: pd.DataFrame, weights: dict[str, float]) -> pd.Series:

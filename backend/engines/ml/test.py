@@ -7,7 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from providers.market_data import fetch_price_history
 from engines.portfolio_engine import prices_to_returns
-from engines.ml.models import build_feature_frames
+from backend.engines.ml.models.asset_vol_predictor import build_feature_frames
 from engines.targets.future_realized_volatility import future_realized_volatility
 from engines.ml.dataset_builder import assemble_dataset
 import matplotlib.pyplot as plt

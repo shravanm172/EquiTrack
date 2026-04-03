@@ -3,7 +3,7 @@ import numpy as np
 from engines.portfolio_engine import portfolio_returns, prices_to_returns
 from providers.market_data import fetch_price_history
 from engines.forecast_estimators import estimate_volatility
-from engines.ml.models import build_models, build_feature_frames
+from backend.engines.ml.models.asset_vol_predictor import build_models, build_feature_frames
 from engines.portfolio_engine import portfolio_volatility, covariance_matrix
 
 h = 30

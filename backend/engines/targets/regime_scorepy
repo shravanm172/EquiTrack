@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+
+def compute_regime_score(
+    returns: pd.DataFrame,
+    annualize: bool = True,
+) -> pd.Series:
+    """
+    Compute the score that will be used to smoothen historically calibrated Heston model parameters,
+    thus making the model more regime-aware and adjusting its parameters accordingly
+
+    This regime_score target is a weighted combination of future realized volatility, future vol of vol, and future max drawdown
+    """
+    if not isinstance(returns, pd.DataFrame):
+        raise TypeError("returns must be a pandas DataFrame.")
+    if returns.empty:
+        raise ValueError("returns must not be empty.")
+    
+    scale = np.sqrt(252.0) if annualize else 1.0
+
+    #Compute future realized volatility
+    asset_vols = returns.std(ddof=1) * scale
+    future_realized_vol = asset_vols.mean()
+    #Compute future vol-of-vol proxy
+    daily_abs_mean = returns.abs().mean(axis=1)
+    future_vol_of_vol = daily_abs_mean.std(ddof=1)
+    #Future max drawdown
+    portfolio_path = (1.0 + returns.mean(axis=1)).cumprod()
+    running_peak = portfolio_path.cummax()
+    drawdowns = 1.0 - (portfolio_path / running_peak)
+    future_max_drawdown = drawdowns.max()
+
+    return pd.Series({
+        "future_realized_vol": future_realized_vol,
+        "future_vol_of_vol": future_vol_of_vol,
+        "future_max_drawdown": future_max_drawdown,
+    })
+
+
+
+
+

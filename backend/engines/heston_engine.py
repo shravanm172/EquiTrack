@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from providers.market_data import fetch_price_history
-from engines.portfolio_engine import prices_to_returns
+from engines.portfolio_engine import portfolio_value_series, portfolio_log_returns_from_value
 
 from dataclasses import dataclass
 import numpy as np
@@ -17,7 +17,7 @@ class HestonSimulationResult:
 
 @dataclass(frozen=True)
 class HestonCalibratedParams:
-    ticker: str
+    portfolio_name: str
     start: str
     end: str
     window: int
@@ -32,6 +32,8 @@ class HestonCalibratedParams:
 
     realized_vol: pd.Series
     realized_var: pd.Series
+    portfolio_returns: pd.Series
+    portfolio_prices: pd.Series
 
 def generate_heston_paths(
     S0: float,
@@ -122,7 +124,8 @@ def generate_heston_paths(
     )
 
 def simulate_baseline_heston_paths(
-    ticker: str,
+    tickers: list[str],
+    weights: dict[str, float],
     start: str,
     end: str,
     T: float,
@@ -130,16 +133,18 @@ def simulate_baseline_heston_paths(
     window: int=21,
     annualization_factor: int=252,
     n_paths: int=1,
+    portfolio_name: str = "portfolio",
+    random_seed: int | None = None
 ) -> HestonSimulationResult:
     """
     Calibrate deterministic baseline Heston parameters from historical returns,
-    then simulate Heston price and variance paths from those parameters.
+    then simulate Heston portfolio value and variance paths from those parameters.
     
     """
     
-    params = calibrate_heston_params(ticker=ticker, start=start, end=end, window=window, annualization_factor=annualization_factor)
+    params = calibrate_heston_params(tickers=tickers, weights=weights, start=start, end=end, window=window, annualization_factor=annualization_factor, portfolio_name=portfolio_name)
     
-    result = generate_heston_paths(S0=params.S0, v0=params.v0, mu=params.mu, kappa=params.kappa, theta=params.theta, xi=params.xi, rho=params.rho, T=T, n_steps=n_steps, n_paths=n_paths)
+    result = generate_heston_paths(S0=params.S0, v0=params.v0, mu=params.mu, kappa=params.kappa, theta=params.theta, xi=params.xi, rho=params.rho, T=T, n_steps=n_steps, n_paths=n_paths, random_seed=random_seed)
 
     return HestonSimulationResult(
         times=result.times,
@@ -149,52 +154,62 @@ def simulate_baseline_heston_paths(
     )
 
 def calibrate_heston_params(
-    ticker: str,
+    tickers: list[str],
+    weights: dict[str,float],
     start: str,
     end: str,
     window: int = 21,
     annualization_factor: int=252,
+    portfolio_name: str = "portfolio",
 )->HestonCalibratedParams:
     """
     Calculate deterministic, constant parameters for the baseline Heston model from historical data
     Will be compared to the ML model which learns parameters from features
     """
     #Basic validation checks
-    ticker = ticker.upper().strip()
-    if not ticker:
-        raise ValueError("ticker must be non-empty")
+    if not tickers:
+        raise ValueError("tickers must be non-empty")
+    tickers = [t.upper().strip() for t in tickers]
+    if any(not t for t in tickers):
+        raise ValueError("All tickers must be non-empty strings.")
     if window <= 1:
         raise ValueError("window must be greater than 1")
     if annualization_factor <= 0:
         raise ValueError("annualization_factor must be positive")
     
     #Fetch historical data
-    price_history = fetch_price_history(tickers=[ticker], start=start, end=end)
-    prices = price_history.prices[ticker].dropna()
-    returns = prices_to_returns(prices).dropna()
+    price_history = fetch_price_history(tickers=tickers, start=start, end=end)
+    prices = price_history.prices.copy()
+    if prices.empty:
+        raise ValueError("No price data returned for the requested portfolio.")
+    port_p = portfolio_value_series(prices, weights)
+    port_r = portfolio_log_returns_from_value(port_p)
 
-    if len(returns) < window + 5:
+
+
+    if len(port_r) < window + 5:
         raise ValueError(
-            f"Not enough return observations to compute realized volatility for {ticker}."
+            "Not enough return observations to compute realized volatility for portfolio."
         )
     
     #Rolling realized volatility and variance
-    realized_vol = returns.rolling(window=window).std() * np.sqrt(annualization_factor)
+    realized_vol = port_r.rolling(window=window).std() * np.sqrt(annualization_factor)
     realized_vol = realized_vol.dropna()
 
     if realized_vol.empty:
         raise ValueError(
-            f"Realized volatility series is empty for {ticker}. Try a longer date range."
+            f"Realized volatility series is empty for portfolio. Try a longer date range."
         )
     
     realized_var = (realized_vol ** 2).dropna()
 
     if len(realized_var) < 3:
         raise ValueError(
-            f"Not enough realized variance observations to calibrate Heston parameters for {ticker}."
+            f"Not enough realized variance observations to calibrate Heston parameters for portfolio."
         )
     
-    S0 = float(prices.iloc[-1]) # Most recent close price
+    
+    S0 = float(port_p.iloc[-1]) # Most recent portfolio value, initial level for simulation
     
     theta = float(realized_var.mean()) # Mean variance 
     v0 = float(realized_var.iloc[-1]) # Most recent variance
@@ -204,32 +219,40 @@ def calibrate_heston_params(
     v_t = realized_var.iloc[:-1].to_numpy()
     v_next = realized_var.iloc[1:].to_numpy()
     delta_v = v_next - v_t
-    x = theta - v_t
+    x = (theta - v_t) * dt
     
 
     coeffs, _, _, _ = np.linalg.lstsq(x.reshape(-1, 1), delta_v, rcond=None)
     slope =  float(coeffs[0])
-    kappa = float(slope / dt) # Mean reversion strength
+    kappa = max(slope,0.0) # Mean reversion strength
 
-    residual = delta_v - kappa * x * dt
-    y_t = residual / (np.sqrt(np.maximum(v_t, 1e-12)) * np.sqrt(dt))
-    xi = float(np.std(y_t)) # Vol-of-vol
+    denom = np.sqrt(np.maximum(v_t, 1e-12)) * np.sqrt(dt)
 
-    if xi <= 0:
-        raise ValueError(f"Estimated xi is non-positive for {ticker}, cannot compute rho.")
-
-    mu = float(returns.mean() * annualization_factor) # Deterministic mean
-
-    log_returns = np.log(prices / prices.shift(1)).dropna()
+    residual = delta_v - kappa * x
+    y_t = residual / denom
+    xi = max(float(np.std(y_t, ddof=0)),0.0) # Vol-of-vol
+ 
+    mu = float(port_r.mean() * annualization_factor) # Deterministic mean
     aligned_index = realized_var.index[:-1]
-    log_returns = log_returns.loc[aligned_index].to_numpy()
-    z1 = (log_returns - (mu - 0.5 * v_t) * dt) / (np.sqrt(np.maximum(v_t, 1e-12)) * np.sqrt(dt))
-    z2 = residual / (xi * np.sqrt(np.maximum(v_t, 1e-12)) * np.sqrt(dt))
-    rho = np.corrcoef(z1, z2)[0, 1]
+    log_returns = port_r.loc[aligned_index].to_numpy()
+    z1 = (log_returns - (mu - 0.5 * v_t) * dt) / denom
+
+    if xi > 1e-12:  
+        z2 = residual / (xi * denom)
+        if np.std(z1) < 1e-8 or np.std(z2) < 1e-8:
+            rho = 0.0
+        else:
+            rho = np.corrcoef(z1, z2)[0, 1]
+    else:
+        rho = 0.0
+
+
     rho = float(np.clip(rho, -1.0, 1.0)) # Correlation between variance randomness and price randomness
 
+   
+
     return HestonCalibratedParams(
-        ticker = ticker,
+        portfolio_name=portfolio_name,
         start = start,
         end = end,
         window = window,
@@ -244,13 +267,21 @@ def calibrate_heston_params(
 
         realized_vol=realized_vol,
         realized_var=realized_var,
+        portfolio_returns=port_r,
+        portfolio_prices= port_p,
     )
 
 
 def main():
     fetch_start = "2017-01-01"
     fetch_end = "2026-03-27"
-    ticker="AAPL"
+    tickers=["AAPL","NVDA","MSFT","GOOGL"]
+    weights = {
+        "AAPL": 0.25,
+        "NVDA": 0.25,
+        "MSFT": 0.25,
+        "GOOGL": 0.25,
+    }
     T=1.0
     n_steps=252
     annualization_factor = 252
@@ -258,7 +289,8 @@ def main():
     n_paths=100
     
     result = simulate_baseline_heston_paths(
-        ticker=ticker,
+        tickers=tickers,
+        weights=weights,
         start=fetch_start,
         end=fetch_end,
         T=T,
@@ -266,6 +298,8 @@ def main():
         window=window,
         annualization_factor=annualization_factor,
         n_paths=n_paths,
+        random_seed=42,
+        portfolio_name="Big_tech",
     )
 
     # ---------- Terminal summaries ----------
@@ -274,7 +308,7 @@ def main():
     terminal_variances = result.variances[:, -1]
 
     print("\n=== Baseline Heston Calibrated Parameters ===")
-    print(f"Ticker: {params.ticker}")
+    print(f"Portfolio: {params.portfolio_name}")
     print(f"S0:     {params.S0:.4f}")
     print(f"mu:     {params.mu:.6f}")
     print(f"v0:     {params.v0:.6f}")
@@ -312,7 +346,7 @@ def main():
         plt.plot(result.times, result.prices[i], alpha=0.35)
     plt.plot(result.times, mean_price_path, linewidth=2, label="Mean simulated price path")
     plt.axhline(params.S0, linestyle="--", linewidth=1, label="Initial price S0")
-    plt.title(f"{ticker} Baseline Heston Simulated Price Paths")
+    plt.title(f"{params.portfolio_name} Baseline Heston Simulated Price Paths")
     plt.xlabel("Time (years)")
     plt.ylabel("Price")
     plt.legend()
@@ -326,7 +360,7 @@ def main():
     plt.plot(result.times, mean_variance_path, linewidth=2, label="Mean simulated variance path")
     plt.axhline(params.theta, linestyle="--", linewidth=1, label="Long-run variance theta")
     plt.axhline(params.v0, linestyle=":", linewidth=1, label="Initial variance v0")
-    plt.title(f"{ticker} Baseline Heston Simulated Variance Paths")
+    plt.title(f"{params.portfolio_name} Baseline Heston Simulated Variance Paths")
     plt.xlabel("Time (years)")
     plt.ylabel("Variance")
     plt.legend()
@@ -338,7 +372,7 @@ def main():
     plt.plot(params.realized_var.index, params.realized_var.values, label="Historical realized variance")
     plt.axhline(params.theta, linestyle="--", linewidth=1, label="theta")
     plt.axhline(params.v0, linestyle=":", linewidth=1, label="v0")
-    plt.title(f"{ticker} Historical Realized Variance vs Calibrated Levels")
+    plt.title(f"{params.portfolio_name} Historical Realized Variance vs Calibrated Levels")
     plt.xlabel("Date")
     plt.ylabel("Variance")
     plt.legend()

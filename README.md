@@ -219,4 +219,4 @@ This ensures code correctness before deployment and enforces disciplined develop
 
 ### Responsiveness
 
-The EquiTrack interface is currently optimized for desktop usage. Mobile responsiveness/compatibility is planned for a future iteration.
+The EquiTrack interface is currently optimized for desktop usage. Mobile responsiveness/compatibility is planned for a future iteration. 

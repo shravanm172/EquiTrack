@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-
+eps = 1e-8
 
 def _validate_prices(prices: pd.DataFrame):
     """
@@ -22,7 +22,7 @@ def moving_average_ratio(prices:pd.DataFrame, short_window:int=20, long_window:i
     short_ma = prices.rolling(window=short_window).mean()
     long_ma = prices.rolling(window=long_window).mean()
 
-    ratio = short_ma / long_ma
+    ratio = short_ma / (long_ma + eps)
     return ratio
 
 

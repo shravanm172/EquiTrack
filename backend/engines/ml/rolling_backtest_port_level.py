@@ -8,7 +8,7 @@ from engines.portfolio_engine import (
 )
 from providers.market_data import fetch_price_history
 from engines.forecast_estimators import estimate_volatility
-from engines.ml.models import build_models, build_feature_frames
+from backend.engines.ml.models.asset_vol_predictor import build_models, build_feature_frames
 
 h = 30
 tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA"]

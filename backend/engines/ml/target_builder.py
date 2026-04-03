@@ -5,8 +5,8 @@ import pandas as pd
 
 def build_target_vector(target_df: pd.DataFrame) -> pd.Series:
     """
-    Converts target DataFrame into a MultiIndex Series.
+    Convert portfolio-level target DataFrame into a date-indexed Series.
     """
-    y = target_df.stack()
+    y = target_df.iloc[:, 0].copy()
     y.name = "target"
     return y

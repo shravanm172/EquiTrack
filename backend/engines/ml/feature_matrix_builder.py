@@ -2,23 +2,16 @@ from __future__ import annotations
 
 import pandas as pd
 
-def _stack_feature(feature_df: pd.DataFrame, feature_name: str) -> pd.Series:
-    """
-    Helper function: Takes feature DataFrame and converts it to a multi-index Series
-    Returns Series with index=(date,ticker)
-    """
-    stacked = feature_df.stack()
-    stacked.name = feature_name
-    return stacked
-
 def build_feature_matrix(features: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
-    Takes a dict with feature names and dataframes and converts to a DataFrame with index=(date,ticker) and column=feature_name
+    Build portfolio-level feature matrix with date index and feature-name columns.
     """
-    stacked_features=[]
+    feature_frames = []
 
     for feature_name, feature_df in features.items():
-        stacked_features.append(_stack_feature(feature_df, feature_name))
-    
-    X = pd.concat(stacked_features, axis=1).sort_index()
+        df = feature_df.copy()
+        df.columns = [feature_name]
+        feature_frames.append(df)
+
+    X = pd.concat(feature_frames, axis=1).sort_index()
     return X

@@ -33,45 +33,73 @@ def _validate_dataset_index(
 
     if not X.index.equals(y.index):
         raise ValueError("X and y must have the same aligned MultiIndex.")
-    
-def rolling_year_splits(
+
+
+def rolling_time_splits(
     X: pd.DataFrame,
     y: pd.Series,
     start_date: str,
     end_date: str,
     train_years: int = 4,
-    validation_years: int = 1,
+    validation_months: int = 3,
+    step_months: int | None = None,
 ) -> Iterator[tuple[int, pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]]:
     """
-    Generate rolling-window yearly train/validation splits.
-    """
+    Generate rolling train/validation splits using a fixed training window in years
+    and a validation window in months.
 
-    #Validation
+    Parameters
+    ----------
+    X : pd.DataFrame
+        Feature matrix with MultiIndex (date, ticker).
+    y : pd.Series
+        Target series with matching MultiIndex (date, ticker).
+    start_date : str
+        Earliest date at which rolling windows may begin.
+    end_date : str
+        Latest allowed end boundary for validation windows.
+    train_years : int, default 4
+        Length of training window in years.
+    validation_months : int, default 3
+        Length of validation window in months.
+    step_months : int | None, default None
+        Amount to roll forward after each fold. Defaults to validation_months.
+
+    Yields
+    ------
+    Iterator[tuple[int, pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]]
+        (fold_number, X_train, y_train, X_validation, y_validation)
+    """
     _validate_dataset_index(X, y)
+
     if not isinstance(train_years, int) or train_years <= 0:
         raise ValueError("train_years must be a positive integer.")
-    if not isinstance(validation_years, int) or validation_years <= 0:
-        raise ValueError("validation_years must be a positive integer.")
+    if not isinstance(validation_months, int) or validation_months <= 0:
+        raise ValueError("validation_months must be a positive integer.")
+
+    if step_months is None:
+        step_months = validation_months
+    if not isinstance(step_months, int) or step_months <= 0:
+        raise ValueError("step_months must be a positive integer.")
 
     start_date = pd.Timestamp(start_date)
     end_date = pd.Timestamp(end_date)
 
-    if(start_date >= end_date):
-        raise ValueError("start date must be greater than end date")
-    
+    if start_date >= end_date:
+        raise ValueError("start_date must be earlier than end_date.")
+
     dates = pd.to_datetime(X.index.get_level_values(0))
-    
+
     fold_number = 0
     current_start = start_date
-    
+
     while True:
         train_start = current_start
         train_end = train_start + pd.DateOffset(years=train_years)
 
         validation_start = train_end
-        validation_end = validation_start + pd.DateOffset(years=validation_years)
+        validation_end = validation_start + pd.DateOffset(months=validation_months)
 
-        #No more data available
         if validation_end > end_date:
             break
 
@@ -91,8 +119,8 @@ def rolling_year_splits(
             raise ValueError(
                 f"Validation split is empty for window [{validation_start.date()}, {validation_end.date()})."
             )
-        
+
         fold_number += 1
         yield fold_number, X_train, y_train, X_validation, y_validation
 
-        current_start = current_start + pd.DateOffset(years=validation_years)
+        current_start = current_start + pd.DateOffset(months=step_months)

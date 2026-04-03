@@ -7,7 +7,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from providers.market_data import fetch_price_history
 from engines.portfolio_engine import prices_to_returns
 from engines.targets.future_realized_volatility import future_realized_volatility
-from engines.ml.models import build_models, build_feature_frames
+from backend.engines.ml.models.asset_vol_predictor import build_models, build_feature_frames
 
 
 h = 30
