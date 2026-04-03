@@ -53,6 +53,7 @@ def generate_garch_paths(
     T: float,
     n_steps: int,
     n_paths: int,
+    nu: float = 8.0,
     random_seed: int | None = None,
 ) -> GarchSimulationResult:
     """
@@ -70,7 +71,8 @@ def generate_garch_paths(
     variances[:, 0] = max(h0, 1e-12)
 
     for t in range(n_steps):
-        z = rng.standard_normal(n_paths)
+        u = rng.standard_t(df=nu, size=n_paths)
+        z = u / (np.sqrt(nu/(nu-2)))
         h_t = np.maximum(variances[:,t], 1e-12)
         r_t = mu + np.sqrt(h_t) * z
 
