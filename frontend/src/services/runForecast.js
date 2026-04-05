@@ -5,6 +5,7 @@ export async function runForecast({
   analysisId,
   source,
   type = "deterministic", // "deterministic" | "stochastic"
+  model,                  // stochastic only: "gbm" | "heston" | "garch"
   days,
   driftMode = "mean",     // "mean" | "rolling" | "ewma"
   volMode = "historical", // stochastic only: "historical" | "rolling" | "ewma"
@@ -46,8 +47,11 @@ export async function runForecast({
   };
 
   if (type === "stochastic") {
-    forecast.vol_mode = volMode;
+    forecast.model = model || "gbm";
     forecast.simulations = simulations;
+    if (!model || model === "gbm") {
+      forecast.vol_mode = volMode;
+    }
   }
 
   if (usesRolling) {

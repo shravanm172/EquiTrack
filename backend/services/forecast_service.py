@@ -23,6 +23,8 @@ from engines.analytics_engine import equity_curve
 from engines.forecast_engine import _forecast_from_returns
 from engines.forecast_estimators import estimate_drift, estimate_volatility
 from engines.stochastic_engine import run_stochastic_forecast
+from engines.heston_engine import calibrate_heston_params
+from engines.garch_engine import calibrate_garch_mle
 
 
 TRADING_DAYS_PER_YEAR = 252
@@ -31,27 +33,28 @@ TRADING_DAYS_PER_YEAR = 252
 def _get_cached_returns_and_starting_cash(
     analysis_id: str,
     source: str,
-) -> tuple[pd.Series, float]:
+) -> tuple[pd.Series, float, dict]:
     """
-    Load cached return series and starting cash from analysis_store.
+    Load cached return series, starting cash, and inputs from analysis_store.
     """
     item = analysis_store.get(analysis_id)
     if item is None:
         raise ValueError("analysis_id not found or expired. Re-run analysis.")
 
     kind = item.get("kind")
+    cached_inputs = item.get("inputs", {})
 
     if kind == "analyze":
         if source != "baseline":
             raise ValueError("source must be 'baseline' for non-shock analyses.")
         port_r = item["portfolio_returns"]
-        starting_cash = float(item["inputs"]["starting_cash"])
-        return port_r, starting_cash
+        starting_cash = float(cached_inputs["starting_cash"])
+        return port_r, starting_cash, cached_inputs
 
     if kind == "analyze_shock":
         port_r = item["baseline_returns"] if source == "baseline" else item["scenario_returns"]
-        starting_cash = float(item["inputs"]["starting_cash"])
-        return port_r, starting_cash
+        starting_cash = float(cached_inputs["starting_cash"])
+        return port_r, starting_cash, cached_inputs
 
     raise ValueError(f"Unsupported cached analysis kind: {kind}")
 
@@ -122,6 +125,7 @@ def _run_stochastic_forecast(
     port_r: pd.Series,
     starting_cash: float,
     forecast_cfg: dict[str, Any],
+    cached_inputs: dict[str, Any],
 ) -> dict[str, Any]:
     forecast_days = int(forecast_cfg.get("days", 30))
     if forecast_days <= 0:
@@ -130,6 +134,10 @@ def _run_stochastic_forecast(
     simulations = int(forecast_cfg.get("simulations", 1000))
     if simulations <= 0:
         raise ValueError("forecast.simulations must be > 0.")
+
+    model = str(forecast_cfg.get("model", "gbm")).strip().lower()
+    if model not in ("gbm", "heston", "garch"):
+        raise ValueError("forecast.model must be 'gbm', 'heston', or 'garch'.")
 
     drift_mode = str(forecast_cfg.get("drift_mode", "mean")).strip().lower()
     vol_mode = str(forecast_cfg.get("vol_mode", "historical")).strip().lower()
@@ -146,6 +154,11 @@ def _run_stochastic_forecast(
     if not isinstance(hist_curve, pd.Series):
         raise TypeError("equity_curve must return a pandas Series.")
 
+    s0 = float(hist_curve.iloc[-1])
+    T = forecast_days / TRADING_DAYS_PER_YEAR
+    N = forecast_days
+
+    # Drift estimation (used by GBM and Heston; GARCH uses its own mu)
     mu_daily, trend_meta = estimate_drift(
         port_r,
         drift_mode,
@@ -153,29 +166,69 @@ def _run_stochastic_forecast(
         alpha=alpha,
         lam=lam,
     )
-    sigma_daily, vol_meta = estimate_volatility(
-        port_r,
-        vol_mode,
-        window=window,
-        alpha=alpha,
-        lam=lam,
-    )
-
     mu_annual = float(mu_daily) * TRADING_DAYS_PER_YEAR
-    sigma_annual = float(sigma_daily) * math.sqrt(TRADING_DAYS_PER_YEAR)
 
-    s0 = float(hist_curve.iloc[-1])
-    T = forecast_days / TRADING_DAYS_PER_YEAR
-    N = forecast_days
+    if model == "gbm":
+        sigma_daily, vol_meta = estimate_volatility(
+            port_r,
+            vol_mode,
+            window=window,
+            alpha=alpha,
+            lam=lam,
+        )
+        sigma_annual = float(sigma_daily) * math.sqrt(TRADING_DAYS_PER_YEAR)
 
-    stoch_out = run_stochastic_forecast(
-        s0=s0,
-        mu=mu_annual,
-        sigma=sigma_annual,
-        T=T,
-        N=N,
-        n=simulations,
-    )
+        stoch_out = run_stochastic_forecast(
+            model="gbm",
+            s0=s0,
+            mu=mu_annual,
+            sigma=sigma_annual,
+            T=T,
+            N=N,
+            n=simulations,
+        )
+
+    elif model == "heston":
+        tickers = cached_inputs.get("tickers", list(cached_inputs.get("weights", {}).keys()))
+        weights = cached_inputs["weights"]
+        date_range = cached_inputs["date_range"]
+
+        heston_params = calibrate_heston_params(
+            tickers=tickers,
+            weights=weights,
+            start=date_range["start"],
+            end=date_range["end"],
+        )
+
+        stoch_out = run_stochastic_forecast(
+            model="heston",
+            s0=s0,
+            mu=mu_annual,
+            T=T,
+            N=N,
+            n=simulations,
+            heston_params=heston_params,
+        )
+
+    else:  # garch
+        garch_params = calibrate_garch_mle(returns=port_r, estimate_mu=False)
+
+        stoch_out = run_stochastic_forecast(
+            model="garch",
+            s0=s0,
+            mu=mu_daily,
+            T=T,
+            N=N,
+            n=simulations,
+            garch_params={
+                "mu": float(garch_params.mu),
+                "omega": float(garch_params.omega),
+                "alpha": float(garch_params.alpha),
+                "beta": float(garch_params.beta),
+                "h0": float(garch_params.h0),
+                "nu": float(garch_params.nu),
+            },
+        )
 
     last_date = hist_curve.index[-1]
     future_idx = pd.bdate_range(last_date + pd.Timedelta(days=1), periods=forecast_days)
@@ -195,34 +248,26 @@ def _run_stochastic_forecast(
 
     inputs_forecast = {
         "type": "stochastic",
+        "model": model,
         "days": forecast_days,
         "simulations": simulations,
-        "drift_mode": drift_mode,
-        "vol_mode": vol_mode,
     }
 
-    if window is not None and (drift_mode == "rolling" or vol_mode == "rolling"):
-        inputs_forecast["window"] = int(window)
+    if model == "gbm":
+        inputs_forecast["drift_mode"] = drift_mode
+        inputs_forecast["vol_mode"] = vol_mode
+        if window is not None and (drift_mode == "rolling" or vol_mode == "rolling"):
+            inputs_forecast["window"] = int(window)
+        if drift_mode == "ewma" or vol_mode == "ewma":
+            if alpha is not None:
+                inputs_forecast["alpha"] = float(alpha)
+            elif lam is not None:
+                inputs_forecast["lambda"] = float(lam)
+            else:
+                inputs_forecast["lambda"] = 0.94
 
-    if drift_mode == "ewma" or vol_mode == "ewma":
-        if alpha is not None:
-            inputs_forecast["alpha"] = float(alpha)
-        elif lam is not None:
-            inputs_forecast["lambda"] = float(lam)
-        else:
-            inputs_forecast["lambda"] = 0.94
-
-    return {
+    result = {
         "inputs_forecast": inputs_forecast,
-        "trend": {
-            **trend_meta,
-            "annualized_drift": float(mu_annual),
-        },
-        "volatility": {
-            **vol_meta,
-            "daily_volatility": float(sigma_daily),
-            "annualized_volatility": float(sigma_annual),
-        },
         "historical_equity_curve": _serialize_series(hist_curve),
         "forecast_paths": forecast_paths,
         "terminal": {
@@ -237,6 +282,34 @@ def _run_stochastic_forecast(
             "prob_drawdown_gt_20": float(drawdown["prob_drawdown_gt_20"]),
         },
     }
+
+    if model == "gbm":
+        result["trend"] = {
+            **trend_meta,
+            "annualized_drift": float(mu_annual),
+        }
+        result["volatility"] = {
+            **vol_meta,
+            "daily_volatility": float(sigma_daily),
+            "annualized_volatility": float(sigma_annual),
+        }
+
+    if "variance" in stoch_out:
+        var_summary = stoch_out["variance"]
+        result["variance"] = {
+            k: float(v) for k, v in var_summary.items()
+            if k != "terminal_variances"
+        }
+
+    if "params" in stoch_out:
+        raw_params = stoch_out["params"]
+        result["calibrated_params"] = {
+            k: float(v) if isinstance(v, (int, float)) else v
+            for k, v in raw_params.items()
+            if not hasattr(v, '__len__') or isinstance(v, str)
+        }
+
+    return result
 
 
 def forecast_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
@@ -282,12 +355,12 @@ def forecast_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
     if forecast_type not in ("deterministic", "stochastic"):
         raise ValueError("forecast.type must be 'deterministic' or 'stochastic'.")
 
-    port_r, starting_cash = _get_cached_returns_and_starting_cash(analysis_id, source)
+    port_r, starting_cash, cached_inputs = _get_cached_returns_and_starting_cash(analysis_id, source)
 
     if forecast_type == "deterministic":
         out = _run_deterministic_forecast(port_r, starting_cash, forecast_cfg)
     else:
-        out = _run_stochastic_forecast(port_r, starting_cash, forecast_cfg)
+        out = _run_stochastic_forecast(port_r, starting_cash, forecast_cfg, cached_inputs)
 
     return {
         "inputs": {

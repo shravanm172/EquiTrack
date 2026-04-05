@@ -142,6 +142,7 @@ def analyze_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
             "starting_cash": float(starting_cash),
             "date_range": {"start": start, "end": end},
             "weights": weights,
+            "tickers": list(weights.keys()),
         },
         "portfolio_returns": art["portfolio_returns"],  # pd.Series
         "last_equity_date": art["equity_series"].index[-1],

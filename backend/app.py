@@ -183,7 +183,9 @@ def create_app() -> Flask:
 
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
-        except Exception:
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
             return jsonify({"error": "Internal server error"}), 500
 
     return app

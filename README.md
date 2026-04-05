@@ -2,7 +2,7 @@
 
 **EquiTrack** is a full-stack portfolio analytics and market simulation platform designed to analyze, stress test, and forecast equity portfolio performance across varying market regimes.
 
-It combines historical market data, deterministic  portfolio analytics, stress-scenario transforms, and stochastic Monte Carlo forecasting in a modular Flask backend + React frontend architecture.
+It combines historical market data, deterministic portfolio analytics, stress-scenario transforms, and stochastic Monte Carlo forecasting in a modular Flask backend + React frontend architecture.
 ---
 
 ## Core Features
@@ -11,11 +11,11 @@ It combines historical market data, deterministic  portfolio analytics, stress-s
 
 - Portfolio defined by holdings (tickers + shares)
 - Historical price data over a user-defined analysis window
-- Analysis pipeline:
+- Core Analysis pipeline:
   1. Prices → daily returns
   2. Asset returns → weighted portfolio returns
   3. Portfolio returns → equity curve
-- Risk metrics:
+- Standard risk metrics used:
   - Annualized return
   - Annualized volatility
   - Maximum drawdown
@@ -43,16 +43,33 @@ Supported scenario transforms:
 
 EquiTrack includes a Monte Carlo simulation engine for forecasting potential future portfolio paths based on historical return characteristics.
 
-Rather than projecting a single deterministic path, the system generates many possible future trajectories, allowing the distribution of potential outcomes to be analyzed.
+Rather than projecting a single deterministic path, the system generates many possible future trajectories, allowing the distribution of potential outcomes to be analyzed for a more accurate understanding of downside risk.
 
-## Simulation Model
-The simulation engine models future daily returns using parameters derived from historical data:
-  - Expected return (mean)
-  - Volatility estimate (currently EWMA based)
+Each simulation produces a potential future equity curve. Running N simulations produces a distribution of portfolio outcomes from which percentile bands, terminal value statistics, and drawdown probabilities are derived.
 
-Each simulation produces a potential future equity curve.
+Three simulation models are currently supported:
+  - **GBM** — Geometric Brownian Motion with constant drift and volatility
+  - **Heston** — Stochastic volatility model with historically calibrated parameters
+  - **GJR-GARCH(1,1)** — Conditional volatility model with MLE-optimized parameters
 
-Running N simulations produces a distribution of portfolio outcomes.
+## Geometric Brownian Motion (GBM)
+The baseline simulation models future daily portfolio returns as log-normal with constant parameters:
+  - Drift (expected return)
+  - Volatility
+
+These can be estimated using the full historical window, a rolling window, or exponentially weighted moving averages (EWMA).
+
+## Heston Stochastic Volatility
+The Heston model extends GBM by allowing volatility itself to follow a mean-reverting stochastic process, capturing volatility clustering and leverage effects observed in real markets.
+
+Parameters (v0, θ, κ, ξ, ρ) are calibrated from historical rolling realized variance using least-squares regression. Due to the absence of implied volatility surfaces, all calibration is backward-looking from realized data rather than option-implied.
+
+## GJR-GARCH(1,1)
+The GJR-GARCH model treats variance as conditionally deterministic — each day's variance is a function of the previous day's variance and squared shock, with an asymmetric leverage term for negative returns.
+
+Parameters are optimized via maximum likelihood estimation (MLE) under Student-t innovations. The optimizer uses a two-phase approach (Nelder-Mead → L-BFGS-B) with unconstrained reparameterization and variance targeting. Its performance has been validated in rolling backtests against the `arch` package reference implementation.
+
+
 
 ## Forecasting Outputs
 From the simulated distribution of equity curves, EquiTrack computes forecast statistics including:

@@ -187,17 +187,17 @@ def calibrate_garch_mle(
         },
     )
 
-    print("\n=== OPTIMIZER RESULT ===")
-    print("success:", result.success)
-    print("message:", result.message)
-    print("nit:", result.nit)
-    print("nfev:", result.nfev)
-    print("njev:", result.njev)
-    print("x0:", x0)
-    print("x*:", result.x)
-    print("fun:", result.fun)
-    print("jac:", result.jac)
-    print("========================\n")
+    # print("\n=== OPTIMIZER RESULT ===")
+    # print("success:", result.success)
+    # print("message:", result.message)
+    # print("nit:", result.nit)
+    # print("nfev:", result.nfev)
+    # print("njev:", result.njev)
+    # print("x0:", x0)
+    # print("x*:", result.x)
+    # print("fun:", result.fun)
+    # print("jac:", result.jac)
+    # print("========================\n")
 
     
     if not result.success:

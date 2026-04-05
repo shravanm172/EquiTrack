@@ -3,6 +3,8 @@ export default function ForecastControls({
   setForecastType,
   forecastDays,
   setForecastDays,
+  model,
+  setModel,
   driftMode,
   setDriftMode,
   volMode,
@@ -16,13 +18,17 @@ export default function ForecastControls({
   onRun,
   buttonLabel = "Run Forecast",
 }) {
+  const isGbm = forecastType !== "stochastic" || model === "gbm";
+
   const usesRolling =
-    driftMode === "rolling" ||
-    (forecastType === "stochastic" && volMode === "rolling");
+    isGbm &&
+    (driftMode === "rolling" ||
+      (forecastType === "stochastic" && volMode === "rolling"));
 
   const usesEwma =
-    driftMode === "ewma" ||
-    (forecastType === "stochastic" && volMode === "ewma");
+    isGbm &&
+    (driftMode === "ewma" ||
+      (forecastType === "stochastic" && volMode === "ewma"));
 
   return (
     <div className="panel-block forecast-controls">
@@ -35,6 +41,21 @@ export default function ForecastControls({
         <option value="deterministic">Deterministic</option>
         <option value="stochastic">Stochastic (Monte Carlo)</option>
       </select>
+
+      {forecastType === "stochastic" && (
+        <>
+          <label className="form-label form-label--spaced">Model</label>
+          <select
+            className="form-input"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          >
+            <option value="gbm">GBM (constant volatility)</option>
+            <option value="heston">Heston (stochastic volatility)</option>
+            <option value="garch">GARCH (conditional volatility)</option>
+          </select>
+        </>
+      )}
 
       <label className="form-label form-label--spaced">Forecast days</label>
       <input
@@ -59,18 +80,22 @@ export default function ForecastControls({
         </>
       )}
 
-      <label className="form-label form-label--spaced">Drift mode</label>
-      <select
-        className="form-input"
-        value={driftMode}
-        onChange={(e) => setDriftMode(e.target.value)}
-      >
-        <option value="mean">Mean (full sample)</option>
-        <option value="rolling">Rolling mean</option>
-        <option value="ewma">EWMA</option>
-      </select>
+      {isGbm && (
+        <>
+          <label className="form-label form-label--spaced">Drift mode</label>
+          <select
+            className="form-input"
+            value={driftMode}
+            onChange={(e) => setDriftMode(e.target.value)}
+          >
+            <option value="mean">Mean (full sample)</option>
+            <option value="rolling">Rolling mean</option>
+            <option value="ewma">EWMA</option>
+          </select>
+        </>
+      )}
 
-      {forecastType === "stochastic" && (
+      {forecastType === "stochastic" && isGbm && (
         <>
           <label className="form-label form-label--spaced">
             Volatility mode

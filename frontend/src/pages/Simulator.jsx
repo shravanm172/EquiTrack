@@ -44,6 +44,7 @@ export default function SimulatorPage() {
   const [stressForecast, setStressForecast] = useState(null);
   const [forecastDays, setForecastDays] = useState(30);
   const [forecastType, setForecastType] = useState("deterministic");
+  const [model, setModel] = useState("gbm");
   const [driftMode, setDriftMode] = useState("mean");
   const [volMode, setVolMode] = useState("historical");
   const [simulations, setSimulations] = useState(1000);
@@ -128,6 +129,7 @@ export default function SimulatorPage() {
         analysisId: analysis.analysis_id,
         source: "baseline",
         type: forecastType,
+        model: forecastType === "stochastic" ? model : undefined,
         days: forecastDays,
         driftMode,
         volMode: forecastType === "stochastic" ? volMode : undefined,
@@ -174,6 +176,7 @@ export default function SimulatorPage() {
 
       const commonArgs = {
         type: forecastType,
+        model: forecastType === "stochastic" ? model : undefined,
         days: forecastDays,
         driftMode,
         volMode: forecastType === "stochastic" ? volMode : undefined,
@@ -273,6 +276,8 @@ export default function SimulatorPage() {
               setForecastType={setForecastType}
               forecastDays={forecastDays}
               setForecastDays={setForecastDays}
+              model={model}
+              setModel={setModel}
               driftMode={driftMode}
               setDriftMode={setDriftMode}
               volMode={volMode}
@@ -306,6 +311,8 @@ export default function SimulatorPage() {
               setForecastType={setForecastType}
               forecastDays={forecastDays}
               setForecastDays={setForecastDays}
+              model={model}
+              setModel={setModel}
               driftMode={driftMode}
               setDriftMode={setDriftMode}
               volMode={volMode}

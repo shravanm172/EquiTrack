@@ -156,6 +156,7 @@ def analyze_with_shock(payload: dict[str, Any]) -> dict[str, Any]:
             "mode": mode,
             "starting_cash": float(starting_cash),
             "weights": weights,
+            "tickers": list(weights.keys()),
             "date_range": {"start": start, "end": end},
             "shock": {
                 "date_requested": shock_date_requested,
