@@ -6,7 +6,6 @@ from engines.portfolio_engine import portfolio_value_series, portfolio_log_retur
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 @dataclass(frozen=True)
 class HestonSimulationResult:
@@ -273,6 +272,8 @@ def calibrate_heston_params(
 
 
 def main():
+    import matplotlib.pyplot as plt
+
     fetch_start = "2017-01-01"
     fetch_end = "2026-03-27"
     tickers=["AAPL","NVDA","MSFT","GOOGL"]
