@@ -18,8 +18,9 @@ def test_simulate_gbm_path_returns_length_n_plus_1():
     sigma = 0.2
     T = 1.0
     N = 252
+    rng = np.random.default_rng(42)
 
-    path = simulate_gbm_path(s0, mu, sigma, T, N)
+    path = simulate_gbm_path(s0, mu, sigma, T, N, rng)
 
     assert len(path) == N + 1
     assert path[0] == s0
@@ -31,8 +32,9 @@ def test_simulate_gbm_path_all_values_positive():
     sigma = 0.2
     T = 1.0
     N = 252
+    rng = np.random.default_rng(42)
 
-    path = simulate_gbm_path(s0, mu, sigma, T, N)
+    path = simulate_gbm_path(s0, mu, sigma, T, N, rng)
 
     assert all(x > 0 for x in path)
 
@@ -43,8 +45,9 @@ def test_simulate_gbm_path_zero_volatility_is_deterministic():
     sigma = 0.0
     T = 1.0
     N = 4
+    rng = np.random.default_rng(42)
 
-    path = simulate_gbm_path(s0, mu, sigma, T, N)
+    path = simulate_gbm_path(s0, mu, sigma, T, N, rng)
 
     dt = T / N
     expected = [s0]
