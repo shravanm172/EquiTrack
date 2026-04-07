@@ -87,10 +87,21 @@ def build_models(
     
     #Shared features for all horizons
     features = build_feature_frames(prices=prices, returns=returns)
+
+    # Stack multi-asset features into long format (date × ticker rows)
+    # so that the portfolio-level dataset builder can handle them.
+    stacked_features = {}
+    for name, df in features.items():
+        s = df.stack()
+        s.name = name
+        stacked_features[name] = s.to_frame()
+
     model_bundles: dict[int, VolatilityModelBundle] = {}
     for h in horizons:
         target_df = future_realized_volatility(returns, horizon=h, annualize=True)
-        X_train, y_train = assemble_dataset(features, target_df)
+        stacked_target = target_df.stack().to_frame(name="target")
+
+        X_train, y_train = assemble_dataset(stacked_features, stacked_target)
         scaler = StandardScaler()
         X_train_scaled = pd.DataFrame(
             scaler.fit_transform(X_train),

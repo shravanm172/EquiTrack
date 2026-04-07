@@ -8,7 +8,7 @@ from providers.market_data import fetch_price_history
 from engines.portfolio_engine import prices_to_returns
 from engines.ml.feature_scaling import scale_fold_features
 from engines.targets.future_realized_volatility import future_realized_volatility
-from backend.engines.ml.models.asset_vol_predictor import build_models, build_feature_frames
+from engines.ml.models.asset_vol_predictor import build_models, build_feature_frames
 
 
 h= 30
@@ -136,14 +136,14 @@ def main():
     #         f"Baseline bias={subdf['err_baseline'].mean():.6f}"
     #     )
 
-    # df["abs_err_ml"] = (df["ml_pred"] - df["actual"]).abs()
-    # df["abs_err_baseline"] = (df["baseline_pred"] - df["actual"]).abs()
+    df["abs_err_ml"] = (df["ml_pred"] - df["actual"]).abs()
+    df["abs_err_baseline"] = (df["baseline_pred"] - df["actual"]).abs()
 
-    # df["vol_regime"] = pd.qcut(
-    #     df["actual"],
-    #     q=3,
-    #     labels=["calm", "medium", "stress"]
-    # )
+    df["vol_regime"] = pd.qcut(
+        df["actual"],
+        q=3,
+        labels=["calm", "medium", "stress"]
+    )
 
     print("\nRegime MAE")
     for regime, subdf in df.groupby("vol_regime"):
