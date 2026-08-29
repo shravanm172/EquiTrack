@@ -53,6 +53,7 @@ export default function ForecastControls({
             <option value="gbm">GBM (constant volatility)</option>
             <option value="heston">Heston (stochastic volatility)</option>
             <option value="garch">GARCH (conditional volatility)</option>
+            <option value="regime">Regime-switching (GMM Monte Carlo)</option>
           </select>
         </>
       )}
