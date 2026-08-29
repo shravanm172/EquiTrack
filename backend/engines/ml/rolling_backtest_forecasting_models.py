@@ -185,23 +185,21 @@ def fit_and_simulate_garch(
 
 
 def fit_and_simulate_regime(
-    train_start: str,
-    train_end: str,
+    train_returns: pd.Series,
     horizon: int,
     n_paths: int,
     random_seed: int,
 ) -> dict:
     """
-    calibrate_regime_params fetches its own price data internally (given
-    tickers/weights/start/end), so this just passes this fold's
-    train_start/train_end through, then simulates with
-    simulate_regime_switching_paths -- calibrate_regime_params is the same
-    production calibration function forecast_service.py will call, same
-    pattern as fit_and_simulate_heston.
+    calibrate_regime_params now takes a returns Series directly -- no fetch
+    needed (it reconstructs a synthetic price series internally for the
+    drawdown feature via cumulative compounding, same technique
+    analytics_engine.equity_curve uses for every model's s0). Same pattern
+    as fit_and_simulate_garch: pass the fold's train_returns straight through.
+    calibrate_regime_params is the same production calibration function
+    forecast_service.py calls.
     """
-    params = calibrate_regime_params(
-        tickers=tickers, weights=weights, start=train_start, end=train_end,
-    )
+    params = calibrate_regime_params(port_r=train_returns)
 
     paths = simulate_regime_switching_paths(
         start_regime_probs=params.current_regime_probs,
@@ -316,7 +314,7 @@ def main():
                 n_paths=N_PATHS, random_seed=fold_seed,
             ),
             "regime": fit_and_simulate_regime(
-                train_start=train_start_date, train_end=train_end_date,
+                train_returns=train_returns,
                 horizon=HORIZON, n_paths=N_PATHS, random_seed=fold_seed,
             ),
         }

@@ -4,8 +4,6 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from providers.market_data import fetch_price_history
-from engines.portfolio_engine import prices_to_returns, portfolio_value_series, portfolio_returns
 from engines.ml.feature_matrix_builder import build_feature_matrix
 from engines.ml.models.regime_classifier import (
     build_feature_frames,
@@ -25,10 +23,10 @@ class RegimeCalibratedParams:
     end: str
     n_regimes: int
 
-    s0: float                          # portfolio value on the last date in [start, end]
+    s0: float                          # synthetic reconstructed portfolio value on the last date (see calibrate_regime_params)
     regime_stats: pd.DataFrame        # mean/std/annualized_return/annualized_vol per regime
     transition_probs: pd.DataFrame    # n_regimes x n_regimes empirical Markov transition matrix
-    current_regime_probs: np.ndarray  # nowcasted regime probabilities as of the last date in [start, end]
+    current_regime_probs: np.ndarray  # nowcasted regime probabilities as of the last date in port_r
 
 
 def nowcast_regime(gmm, scaler, latest_feature_row: pd.DataFrame) -> np.ndarray:
@@ -50,36 +48,37 @@ def nowcast_regime(gmm, scaler, latest_feature_row: pd.DataFrame) -> np.ndarray:
 
 
 def calibrate_regime_params(
-    tickers: list[str],
-    weights: dict[str, float],
-    start: str,
-    end: str,
+    port_r: pd.Series,
     n_regimes: int = N_REGIMES_DEFAULT,
     portfolio_name: str = "portfolio",
     random_state: int = 42,
 ) -> RegimeCalibratedParams:
     """
-    Fetch data, fit the regime GMM (reusing regime_classifier.py's validated
-    pipeline) and bundle everything a regime-switching simulation needs into 
-    one calibrated-params object. 
+    Fit the regime GMM on an already-computed portfolio return series
+    (reusing regime_classifier.py's validated pipeline) and bundle
+    everything a regime-switching simulation needs into one
+    calibrated-params object. Matches calibrate_garch_mle's contract --
+    no network fetch, just the returns series the caller already has.
+
+    The drawdown feature needs a price-like series, not just returns.
+    Rather than fetching real prices, reconstruct a synthetic one via
+    cumulative compounding from an arbitrary reference value of 1.0 --
+    the exact same technique analytics_engine.equity_curve already uses
+    for every model's s0 (V_t = start * cumprod(1+r_t)). Drawdown is a
+    scale-invariant ratio (distance from a running peak, as a %), so this
+    gives identical drawdown values to using real prices.
 
     Parameters:
-        - tickers of stocks in portfolio
-        - weights of each stock in the portfolio
-        - start date of analysis window
-        - end date of analysis window
-        - number of regime states to fit GMM 
+        - port_r: portfolio daily returns series
+        - number of regime states to fit GMM
         - name of portfolio
         - random seed
     Returns:
         - RegimeCalibratedParams object with aggregate regime stats, transition probability matrix, \
-          and nowcasted regime probabilities for the end date
+          and nowcasted regime probabilities for the last date in port_r
     """
-    price_hist = fetch_price_history(tickers=tickers, start=start, end=end)
-    prices = price_hist.prices
-    asset_returns = prices_to_returns(prices)
-    port_r = portfolio_returns(asset_returns=asset_returns, weights=weights)
-    port_p_df = portfolio_value_series(prices, weights).to_frame(name="portfolio")
+    synthetic_prices = (1.0 + port_r).cumprod()
+    port_p_df = synthetic_prices.to_frame(name="portfolio")
     port_r_df = port_r.to_frame(name="portfolio")
 
     feature_frames = build_feature_frames(port_prices=port_p_df, port_returns=port_r_df)
@@ -100,8 +99,8 @@ def calibrate_regime_params(
 
     return RegimeCalibratedParams(
         portfolio_name=portfolio_name,
-        start=start,
-        end=end,
+        start=port_r.index[0].strftime("%Y-%m-%d"),
+        end=port_r.index[-1].strftime("%Y-%m-%d"),
         n_regimes=n_regimes,
         s0=s0,
         regime_stats=regime_stats,

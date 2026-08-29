@@ -234,20 +234,11 @@ def _run_stochastic_forecast(
             )
 
         case _:
-            tickers = cached_inputs.get("tickers", list(cached_inputs.get("weights", {}).keys()))
-            weights = cached_inputs["weights"]
-            date_range = cached_inputs["date_range"]
-
-            regime_params = calibrate_regime_params(
-                tickers=tickers,
-                weights=weights,
-                start=date_range["start"],
-                end=date_range["end"],
-            )
+            regime_params = calibrate_regime_params(port_r=port_r)
 
             '''
             No mu since regime_stats already carries each regime's own mean
-            return, andthe model's entire premise is that drift is regime-
+            return, and the model's entire premise is that drift is regime-
             dependent, so there's no single top-level drift to fall back on.
             '''
             stoch_out = run_stochastic_forecast(
