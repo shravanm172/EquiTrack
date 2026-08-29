@@ -25,6 +25,7 @@ from engines.forecast_estimators import estimate_drift, estimate_volatility
 from engines.stochastic_engine import run_stochastic_forecast
 from engines.heston_engine import calibrate_heston_params
 from engines.garch_engine import calibrate_garch_mle
+from engines.regime_engine import calibrate_regime_params
 
 
 TRADING_DAYS_PER_YEAR = 252
@@ -136,8 +137,8 @@ def _run_stochastic_forecast(
         raise ValueError("forecast.simulations must be > 0.")
 
     model = str(forecast_cfg.get("model", "gbm")).strip().lower()
-    if model not in ("gbm", "heston", "garch"):
-        raise ValueError("forecast.model must be 'gbm', 'heston', or 'garch'.")
+    if model not in ("gbm", "heston", "garch", "regime"):
+        raise ValueError("forecast.model must be 'gbm', 'heston', 'garch', or 'regime'.")
 
     drift_mode = str(forecast_cfg.get("drift_mode", "mean")).strip().lower()
     vol_mode = str(forecast_cfg.get("vol_mode", "historical")).strip().lower()
@@ -168,67 +169,95 @@ def _run_stochastic_forecast(
     )
     mu_annual = float(mu_daily) * TRADING_DAYS_PER_YEAR
 
-    if model == "gbm":
-        sigma_daily, vol_meta = estimate_volatility(
-            port_r,
-            vol_mode,
-            window=window,
-            alpha=alpha,
-            lam=lam,
-        )
-        sigma_annual = float(sigma_daily) * math.sqrt(TRADING_DAYS_PER_YEAR)
 
-        stoch_out = run_stochastic_forecast(
-            model="gbm",
-            s0=s0,
-            mu=mu_annual,
-            sigma=sigma_annual,
-            T=T,
-            N=N,
-            n=simulations,
-        )
+    match model:
+        case "gbm":
+            sigma_daily, vol_meta = estimate_volatility(
+                port_r,
+                vol_mode,
+                window=window,
+                alpha=alpha,
+                lam=lam,
+            )
+            sigma_annual = float(sigma_daily) * math.sqrt(TRADING_DAYS_PER_YEAR)
 
-    elif model == "heston":
-        tickers = cached_inputs.get("tickers", list(cached_inputs.get("weights", {}).keys()))
-        weights = cached_inputs["weights"]
-        date_range = cached_inputs["date_range"]
+            stoch_out = run_stochastic_forecast(
+                model="gbm",
+                s0=s0,
+                mu=mu_annual,
+                sigma=sigma_annual,
+                T=T,
+                N=N,
+                n=simulations,
+            )
 
-        heston_params = calibrate_heston_params(
-            tickers=tickers,
-            weights=weights,
-            start=date_range["start"],
-            end=date_range["end"],
-        )
+        case"heston":
+            tickers = cached_inputs.get("tickers", list(cached_inputs.get("weights", {}).keys()))
+            weights = cached_inputs["weights"]
+            date_range = cached_inputs["date_range"]
 
-        stoch_out = run_stochastic_forecast(
-            model="heston",
-            s0=s0,
-            mu=mu_annual,
-            T=T,
-            N=N,
-            n=simulations,
-            heston_params=heston_params,
-        )
+            heston_params = calibrate_heston_params(
+                tickers=tickers,
+                weights=weights,
+                start=date_range["start"],
+                end=date_range["end"],
+            )
 
-    else:  # garch
-        garch_params = calibrate_garch_mle(returns=port_r, estimate_mu=False)
+            stoch_out = run_stochastic_forecast(
+                model="heston",
+                s0=s0,
+                mu=mu_annual,
+                T=T,
+                N=N,
+                n=simulations,
+                heston_params=heston_params,
+            )
 
-        stoch_out = run_stochastic_forecast(
-            model="garch",
-            s0=s0,
-            mu=mu_daily,
-            T=T,
-            N=N,
-            n=simulations,
-            garch_params={
-                "mu": float(garch_params.mu),
-                "omega": float(garch_params.omega),
-                "alpha": float(garch_params.alpha),
-                "beta": float(garch_params.beta),
-                "h0": float(garch_params.h0),
-                "nu": float(garch_params.nu),
-            },
-        )
+        case "garch":
+            garch_params = calibrate_garch_mle(returns=port_r, estimate_mu=False)
+
+            stoch_out = run_stochastic_forecast(
+                model="garch",
+                s0=s0,
+                mu=mu_daily,
+                T=T,
+                N=N,
+                n=simulations,
+                garch_params={
+                    "mu": float(garch_params.mu),
+                    "omega": float(garch_params.omega),
+                    "alpha": float(garch_params.alpha),
+                    "beta": float(garch_params.beta),
+                    "h0": float(garch_params.h0),
+                    "nu": float(garch_params.nu),
+                },
+            )
+
+        case _:
+            tickers = cached_inputs.get("tickers", list(cached_inputs.get("weights", {}).keys()))
+            weights = cached_inputs["weights"]
+            date_range = cached_inputs["date_range"]
+
+            regime_params = calibrate_regime_params(
+                tickers=tickers,
+                weights=weights,
+                start=date_range["start"],
+                end=date_range["end"],
+            )
+
+            '''
+            No mu since regime_stats already carries each regime's own mean
+            return, andthe model's entire premise is that drift is regime-
+            dependent, so there's no single top-level drift to fall back on.
+            '''
+            stoch_out = run_stochastic_forecast(
+                model="regime",
+                s0=s0,
+                T=T,
+                N=N,
+                n=simulations,
+                regime_params=regime_params,
+            )
 
     last_date = hist_curve.index[-1]
     future_idx = pd.bdate_range(last_date + pd.Timedelta(days=1), periods=forecast_days)
