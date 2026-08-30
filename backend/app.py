@@ -7,10 +7,13 @@ import json
 
 from providers.market_data import fetch_price_history
 from services.analysis_service import analyze_portfolio
-from services.stress_service import analyze_with_shock
 from services.store_singleton import analysis_store
 from services.forecast_service import forecast_portfolio
-from services.regime_service import preview_regime_states, run_regime_stress_test
+from services.stress_service import (
+    run_deterministic_regime_stress_forecast,
+    preview_calibrated_regime_states,
+    run_calibrated_regime_stress_test,
+)
 
 
 def create_app() -> Flask:
@@ -158,19 +161,25 @@ def create_app() -> Flask:
         except Exception:
             return jsonify({"error": "Internal server error"}), 500
         
-    @app.route("/api/analyze_shock", methods=["POST", "OPTIONS"])
-    def analyze_shock():
+    @app.route("/api/stress/deterministic_regime", methods=["POST", "OPTIONS"])
+    def stress_deterministic_regime():
         if request.method == "OPTIONS":
             return "", 200
+
         payload = request.get_json(silent=True) or {}
+
         try:
-            result = analyze_with_shock(payload)
+            result = run_deterministic_regime_stress_forecast(payload)
             return jsonify(result)
+
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         except Exception:
+            import traceback
+            traceback.print_exc()
             return jsonify({"error": "Internal server error"}), 500
-        
+
+
     @app.route("/api/forecast", methods=["POST", "OPTIONS"])
     def forecast():
         if request.method == "OPTIONS":
@@ -189,15 +198,15 @@ def create_app() -> Flask:
             traceback.print_exc()
             return jsonify({"error": "Internal server error"}), 500
 
-    @app.route("/api/regime/preview", methods=["POST", "OPTIONS"])
-    def regime_preview():
+    @app.route("/api/stress/calibrated_regime/preview", methods=["POST", "OPTIONS"])
+    def stress_calibrated_regime_preview():
         if request.method == "OPTIONS":
             return "", 200
 
         payload = request.get_json(silent=True) or {}
 
         try:
-            result = preview_regime_states(payload)
+            result = preview_calibrated_regime_states(payload)
             return jsonify(result)
 
         except ValueError as e:
@@ -207,15 +216,15 @@ def create_app() -> Flask:
             traceback.print_exc()
             return jsonify({"error": "Internal server error"}), 500
 
-    @app.route("/api/regime/stress", methods=["POST", "OPTIONS"])
-    def regime_stress():
+    @app.route("/api/stress/calibrated_regime/stress", methods=["POST", "OPTIONS"])
+    def stress_calibrated_regime_stress():
         if request.method == "OPTIONS":
             return "", 200
 
         payload = request.get_json(silent=True) or {}
 
         try:
-            result = run_regime_stress_test(payload)
+            result = run_calibrated_regime_stress_test(payload)
             return jsonify(result)
 
         except ValueError as e:
