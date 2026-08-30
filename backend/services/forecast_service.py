@@ -18,7 +18,8 @@ from typing import Any
 import math
 import pandas as pd
 
-from services.store_singleton import analysis_store
+from services.store_singleton import analysis_store, get_cached_returns_and_starting_cash
+from services.serialization import serialize_series, serialize_band_series
 from engines.analytics_engine import equity_curve
 from engines.forecast_engine import _forecast_from_returns
 from engines.forecast_estimators import estimate_drift, estimate_volatility
@@ -29,49 +30,6 @@ from engines.regime_engine import calibrate_regime_params
 
 
 TRADING_DAYS_PER_YEAR = 252
-
-
-def _get_cached_returns_and_starting_cash(
-    analysis_id: str,
-    source: str,
-) -> tuple[pd.Series, float, dict]:
-    """
-    Load cached return series, starting cash, and inputs from analysis_store.
-    """
-    item = analysis_store.get(analysis_id)
-    if item is None:
-        raise ValueError("analysis_id not found or expired. Re-run analysis.")
-
-    kind = item.get("kind")
-    cached_inputs = item.get("inputs", {})
-
-    if kind == "analyze":
-        if source != "baseline":
-            raise ValueError("source must be 'baseline' for non-shock analyses.")
-        port_r = item["portfolio_returns"]
-        starting_cash = float(cached_inputs["starting_cash"])
-        return port_r, starting_cash, cached_inputs
-
-    if kind == "analyze_shock":
-        port_r = item["baseline_returns"] if source == "baseline" else item["scenario_returns"]
-        starting_cash = float(cached_inputs["starting_cash"])
-        return port_r, starting_cash, cached_inputs
-
-    raise ValueError(f"Unsupported cached analysis kind: {kind}")
-
-
-def _serialize_series(series: pd.Series) -> list[dict[str, Any]]:
-    return [
-        {"date": idx.strftime("%Y-%m-%d"), "value": round(float(val), 2)}
-        for idx, val in series.items()
-    ]
-
-
-def _serialize_band_series(index: pd.Index, values) -> list[dict[str, Any]]:
-    return [
-        {"date": idx.strftime("%Y-%m-%d"), "value": round(float(val), 2)}
-        for idx, val in zip(index, values)
-    ]
 
 
 def _run_deterministic_forecast(
@@ -256,11 +214,11 @@ def _run_stochastic_forecast(
     path_metrics = stoch_out["path_metrics"]
 
     forecast_paths = {
-        "p10": _serialize_band_series(future_idx, path_metrics["p10_path"][1:]),
-        "p25": _serialize_band_series(future_idx, path_metrics["p25_path"][1:]),
-        "p50": _serialize_band_series(future_idx, path_metrics["p50_path"][1:]),
-        "p75": _serialize_band_series(future_idx, path_metrics["p75_path"][1:]),
-        "p90": _serialize_band_series(future_idx, path_metrics["p90_path"][1:]),
+        "p10": serialize_band_series(future_idx, path_metrics["p10_path"][1:]),
+        "p25": serialize_band_series(future_idx, path_metrics["p25_path"][1:]),
+        "p50": serialize_band_series(future_idx, path_metrics["p50_path"][1:]),
+        "p75": serialize_band_series(future_idx, path_metrics["p75_path"][1:]),
+        "p90": serialize_band_series(future_idx, path_metrics["p90_path"][1:]),
     }
 
     terminal = stoch_out["terminal"]
@@ -288,7 +246,7 @@ def _run_stochastic_forecast(
 
     result = {
         "inputs_forecast": inputs_forecast,
-        "historical_equity_curve": _serialize_series(hist_curve),
+        "historical_equity_curve": serialize_series(hist_curve),
         "forecast_paths": forecast_paths,
         "terminal": {
             "mean_terminal_value": round(float(terminal["mean_terminal_value"]), 2),
@@ -375,7 +333,7 @@ def forecast_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
     if forecast_type not in ("deterministic", "stochastic"):
         raise ValueError("forecast.type must be 'deterministic' or 'stochastic'.")
 
-    port_r, starting_cash, cached_inputs = _get_cached_returns_and_starting_cash(analysis_id, source)
+    port_r, starting_cash, cached_inputs = get_cached_returns_and_starting_cash(analysis_id, source)
 
     if forecast_type == "deterministic":
         out = _run_deterministic_forecast(port_r, starting_cash, forecast_cfg)

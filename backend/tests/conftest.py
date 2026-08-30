@@ -32,3 +32,12 @@ def synthetic_returns() -> pd.Series:
 
     returns = np.concatenate([calm, crisis, calm2])
     return pd.Series(returns, index=idx, name="portfolio")
+
+
+@pytest.fixture
+def client():
+    from app import create_app
+
+    app = create_app()
+    app.config.update(TESTING=True)
+    return app.test_client()

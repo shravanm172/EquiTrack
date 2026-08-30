@@ -74,7 +74,7 @@ def calibrate_regime_params(
         - name of portfolio
         - random seed
     Returns:
-        - RegimeCalibratedParams object with aggregate regime stats, transition probability matrix, \
+        - RegimeCalibratedParams object with aggregate regime stats, transition probability matrix, 
           and nowcasted regime probabilities for the last date in port_r
     """
     synthetic_prices = (1.0 + port_r).cumprod()

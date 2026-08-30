@@ -10,6 +10,7 @@ from services.analysis_service import analyze_portfolio
 from services.stress_service import analyze_with_shock
 from services.store_singleton import analysis_store
 from services.forecast_service import forecast_portfolio
+from services.regime_service import preview_regime_states, run_regime_stress_test
 
 
 def create_app() -> Flask:
@@ -184,6 +185,42 @@ def create_app() -> Flask:
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": "Internal server error"}), 500
+
+    @app.route("/api/regime/preview", methods=["POST", "OPTIONS"])
+    def regime_preview():
+        if request.method == "OPTIONS":
+            return "", 200
+
+        payload = request.get_json(silent=True) or {}
+
+        try:
+            result = preview_regime_states(payload)
+            return jsonify(result)
+
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": "Internal server error"}), 500
+
+    @app.route("/api/regime/stress", methods=["POST", "OPTIONS"])
+    def regime_stress():
+        if request.method == "OPTIONS":
+            return "", 200
+
+        payload = request.get_json(silent=True) or {}
+
+        try:
+            result = run_regime_stress_test(payload)
+            return jsonify(result)
+
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception:
             import traceback
             traceback.print_exc()
             return jsonify({"error": "Internal server error"}), 500
