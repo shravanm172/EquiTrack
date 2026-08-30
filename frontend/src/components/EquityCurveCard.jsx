@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import LineChartCard from "./LineChartCard";
 
 function money(v) {
@@ -9,40 +9,6 @@ function money(v) {
     currency: "USD",
     maximumFractionDigits: 0,
   });
-}
-
-function mergeCurves(base = [], scen = []) {
-  const m = new Map();
-
-  for (const p of base) {
-    m.set(p.date, { date: p.date, baseline: p.value });
-  }
-
-  for (const p of scen) {
-    const row = m.get(p.date) || { date: p.date };
-    row.scenario = p.value;
-    m.set(p.date, row);
-  }
-
-  return Array.from(m.values()).sort((a, b) =>
-    String(a.date).localeCompare(String(b.date)),
-  );
-}
-
-function mergeSeries(seriesMap) {
-  const m = new Map();
-
-  Object.entries(seriesMap).forEach(([key, arr]) => {
-    (arr || []).forEach((p) => {
-      const row = m.get(p.date) || { date: p.date };
-      row[key] = p.value;
-      m.set(p.date, row);
-    });
-  });
-
-  return Array.from(m.values()).sort((a, b) =>
-    String(a.date).localeCompare(String(b.date)),
-  );
 }
 
 function mergeSeriesWithBands(seriesMap, bandMap) {
@@ -88,126 +54,96 @@ function getForecastType(fc) {
   return fc?.inputs?.forecast?.type || "deterministic";
 }
 
-function BandToggles({
-  showBaselineBand,
-  setShowBaselineBand,
-  showScenarioBand,
-  setShowScenarioBand,
-  hasScenario,
-}) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-      <label
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.35rem",
-          fontSize: "0.9rem",
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={showBaselineBand}
-          onChange={(e) => setShowBaselineBand(e.target.checked)}
-        />
-        Uncertainty Fan
-      </label>
+function getShockType(sr) {
+  return sr?.inputs?.shock?.type;
+}
 
-      {hasScenario && (
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.35rem",
-            fontSize: "0.9rem",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={showScenarioBand}
-            onChange={(e) => setShowScenarioBand(e.target.checked)}
-          />
-          Scenario band
-        </label>
-      )}
-    </div>
+function shockTitle(shockType) {
+  if (shockType === "calibrated_regime") {
+    return "Calibrated Regime-Switching Stress Test";
+  }
+  if (shockType === "deterministic_regime") {
+    return "Deterministic Regime-Shift Stress Test";
+  }
+  return "Stress Test";
+}
+
+// Single checkbox now -- there's only ever one simulated distribution (one
+// p10-p90 fan) on screen at a time, unlike the old paired baseline/scenario
+// comparison which had two.
+function BandToggle({ showBand, setShowBand }) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "0.35rem",
+        fontSize: "0.9rem",
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={showBand}
+        onChange={(e) => setShowBand(e.target.checked)}
+      />
+      Uncertainty Fan
+    </label>
   );
 }
 
-export default function EquityCurveCard({
-  analysis,
-  stress,
-  forecast,
-  stressForecast,
-}) {
-  const [showBaselineBand, setShowBaselineBand] = useState(true);
-  const [showScenarioBand, setShowScenarioBand] = useState(true);
-
-  const hasStress =
-    stress?.baseline?.equity_curve?.length &&
-    stress?.scenario?.equity_curve?.length;
+export default function EquityCurveCard({ analysis, forecast, stressResult }) {
+  const [showBand, setShowBand] = useState(true);
 
   const hasAnalysis = analysis?.equity_curve?.length;
 
   const forecastType = getForecastType(forecast);
-  const stressBaselineForecastType = getForecastType(stressForecast?.baseline);
-  const stressScenarioForecastType = getForecastType(stressForecast?.scenario);
 
   const isSingleStochastic =
-    !hasStress &&
     forecastType === "stochastic" &&
     forecast?.historical_equity_curve?.length &&
     forecast?.forecast_paths?.p50?.length;
 
-  const isStressStochastic =
-    hasStress &&
-    stressBaselineForecastType === "stochastic" &&
-    stressScenarioForecastType === "stochastic" &&
-    stressForecast?.baseline?.forecast_paths?.p50?.length &&
-    stressForecast?.scenario?.forecast_paths?.p50?.length;
+  const isRegimeStress =
+    stressResult?.historical_equity_curve?.length &&
+    stressResult?.forecast_paths?.p50?.length;
 
-  useEffect(() => {
-    if (isStressStochastic) {
-      setShowBaselineBand(false);
-      setShowScenarioBand(true);
-    } else if (isSingleStochastic) {
-      setShowBaselineBand(true);
-      setShowScenarioBand(true);
+  // Reset the band toggle to visible whenever a genuinely new result comes
+  // in (object identity, so re-running with identical params still counts),
+  // while still letting the user manually hide it for the result on screen.
+  // Adjusted during render rather than in a useEffect -- React's documented
+  // pattern for "reset state when derived data changes" -- so there's no
+  // extra render-then-setState-then-rerender cascade.
+  const activeResult = isRegimeStress
+    ? stressResult
+    : isSingleStochastic
+      ? forecast
+      : null;
+
+  const [prevActiveResult, setPrevActiveResult] = useState(null);
+  if (activeResult !== prevActiveResult) {
+    setPrevActiveResult(activeResult);
+    if (activeResult != null) {
+      setShowBand(true);
     }
-  }, [isSingleStochastic, isStressStochastic]);
+  }
+
+  const hasActualRealized = !!stressResult?.actual_realized_curve?.length;
 
   const data = useMemo(() => {
-    if (isStressStochastic) {
+    if (isRegimeStress) {
       return mergeSeriesWithBands(
         {
-          baseline: stressForecast?.baseline?.historical_equity_curve,
-          baseline_p50: stressForecast?.baseline?.forecast_paths?.p50,
-          scenario: stressForecast?.scenario?.historical_equity_curve,
-          scenario_p50: stressForecast?.scenario?.forecast_paths?.p50,
+          historical: stressResult?.historical_equity_curve,
+          actual: stressResult?.actual_realized_curve,
+          p50: stressResult?.forecast_paths?.p50,
         },
         {
-          baseline_band: {
-            lower: stressForecast?.baseline?.forecast_paths?.p10,
-            upper: stressForecast?.baseline?.forecast_paths?.p90,
-          },
-          scenario_band: {
-            lower: stressForecast?.scenario?.forecast_paths?.p10,
-            upper: stressForecast?.scenario?.forecast_paths?.p90,
+          band: {
+            lower: stressResult?.forecast_paths?.p10,
+            upper: stressResult?.forecast_paths?.p90,
           },
         },
       );
-    }
-
-    if (hasStress) {
-      const baseCurve =
-        stressForecast?.baseline?.equity_curve ||
-        stress?.baseline?.equity_curve;
-
-      const scenCurve =
-        stressForecast?.scenario?.equity_curve ||
-        stress?.scenario?.equity_curve;
-
-      return mergeCurves(baseCurve, scenCurve);
     }
 
     if (isSingleStochastic) {
@@ -235,76 +171,57 @@ export default function EquityCurveCard({
 
     return [];
   }, [
-    hasStress,
     hasAnalysis,
     isSingleStochastic,
-    isStressStochastic,
+    isRegimeStress,
     analysis,
-    stress,
     forecast,
-    stressForecast,
+    stressResult,
   ]);
 
   if (!data.length) return null;
 
-  const shockApplied = stress?.inputs?.shock?.date_applied;
   const asOf =
-    analysis?.holdings_breakdown?.as_of ||
-    forecast?.holdings_breakdown?.as_of ||
-    stress?.baseline?.holdings_breakdown?.as_of;
-
-  const subtitle = hasStress
-    ? shockApplied
-      ? `Shock applied on ${shockApplied}`
-      : "Baseline vs stress"
-    : asOf
-      ? `Valued as of ${asOf}`
-      : undefined;
+    analysis?.holdings_breakdown?.as_of || forecast?.holdings_breakdown?.as_of;
 
   let title = "Equity Curve";
+  let subtitle = asOf ? `Valued as of ${asOf}` : undefined;
   let series = [{ key: "baseline", label: "Equity", color: "#4ea1ff" }];
   let bands = [];
   let extraControls = null;
+  let linePropsByKey = {};
 
-  if (isStressStochastic) {
-    title = "Stochastic Forecast (Baseline vs Stress)";
+  if (isRegimeStress) {
+    const shockType = getShockType(stressResult);
+    const asOfApplied = stressResult?.inputs?.as_of_date?.applied;
+    const asOfNote = stressResult?.inputs?.as_of_date?.note;
+
+    title = shockTitle(shockType);
+    subtitle = asOfApplied
+      ? `As of ${asOfApplied}${asOfNote ? ` — ${asOfNote}` : ""}`
+      : undefined;
+
     series = [
-      { key: "baseline", label: "Baseline Hist", color: "#4ea1ff" },
-      { key: "baseline_p50", label: "Baseline Median", color: "#1f78ff" },
-      { key: "scenario", label: "Stress Hist", color: "#ff9a9a" },
-      { key: "scenario_p50", label: "Stress Median", color: "#ff6b6b" },
+      { key: "historical", label: "Historical", color: "#4ea1ff" },
+      ...(hasActualRealized
+        ? [{ key: "actual", label: "Actual (realized)", color: "#8f8f8f" }]
+        : []),
+      { key: "p50", label: "Median (simulated)", color: "#ff6b6b" },
     ];
 
     bands = [
-      {
-        key: "baselineBand",
-        rangeKey: "baseline_band",
-        color: "#4ea1ff",
-        visible: showBaselineBand,
-      },
-      {
-        key: "scenarioBand",
-        rangeKey: "scenario_band",
-        color: "#ff6b6b",
-        visible: showScenarioBand,
-      },
+      { key: "band", rangeKey: "band", color: "#ff6b6b", visible: showBand },
     ];
 
+    // Dashed so "what actually happened" reads visually distinct from the
+    // solid historical line and the solid simulated median.
+    if (hasActualRealized) {
+      linePropsByKey = { actual: { strokeDasharray: "5 3" } };
+    }
+
     extraControls = (
-      <BandToggles
-        showBaselineBand={showBaselineBand}
-        setShowBaselineBand={setShowBaselineBand}
-        showScenarioBand={showScenarioBand}
-        setShowScenarioBand={setShowScenarioBand}
-        hasScenario={true}
-      />
+      <BandToggle showBand={showBand} setShowBand={setShowBand} />
     );
-  } else if (hasStress) {
-    title = "Equity Curve (Baseline vs Stress)";
-    series = [
-      { key: "baseline", label: "Baseline", color: "#4ea1ff" },
-      { key: "scenario", label: "Stressed", color: "#ff6b6b" },
-    ];
   } else if (isSingleStochastic) {
     title = "Stochastic Forecast";
     series = [
@@ -313,22 +230,11 @@ export default function EquityCurveCard({
     ];
 
     bands = [
-      {
-        key: "baselineBand",
-        rangeKey: "band",
-        color: "#4ea1ff",
-        visible: showBaselineBand,
-      },
+      { key: "band", rangeKey: "band", color: "#4ea1ff", visible: showBand },
     ];
 
     extraControls = (
-      <BandToggles
-        showBaselineBand={showBaselineBand}
-        setShowBaselineBand={setShowBaselineBand}
-        showScenarioBand={showScenarioBand}
-        setShowScenarioBand={setShowScenarioBand}
-        hasScenario={false}
-      />
+      <BandToggle showBand={showBand} setShowBand={setShowBand} />
     );
   }
 
@@ -339,6 +245,7 @@ export default function EquityCurveCard({
       data={data}
       series={series}
       bands={bands}
+      linePropsByKey={linePropsByKey}
       extraControls={extraControls}
       yLabel="Equity"
       yTickFormatter={(v) => (Number(v) / 1000).toFixed(0) + "k"}

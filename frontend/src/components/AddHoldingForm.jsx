@@ -9,8 +9,17 @@ function isYYYYMMDD(s) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
-function todayYYYYMMDD() {
-  return new Date().toISOString().slice(0, 10);
+// Defaulting the date picker to literally "today" means the default lands
+// on a guaranteed-no-data window whenever today is a weekend (Sat/Sun have
+// no trading, so the backend's lookahead can come up empty and today alone
+// never has one). Roll weekends back to the prior Friday so the default
+// value itself is never a date known in advance to have no data.
+function mostRecentBusinessDayYYYYMMDD() {
+  const d = new Date();
+  const day = d.getDay(); // 0 = Sunday, 6 = Saturday
+  if (day === 0) d.setDate(d.getDate() - 2);
+  else if (day === 6) d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function isFutureDate(dateStr) {
@@ -25,7 +34,7 @@ function isFutureDate(dateStr) {
 export default function AddHoldingForm({ holdings, setHoldings }) {
   const [ticker, setTicker] = useState("");
   const [shares, setShares] = useState("");
-  const [buyDate, setBuyDate] = useState(todayYYYYMMDD());
+  const [buyDate, setBuyDate] = useState(mostRecentBusinessDayYYYYMMDD());
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
@@ -125,7 +134,7 @@ export default function AddHoldingForm({ holdings, setHoldings }) {
       // Reset form fields
       setTicker("");
       setShares("");
-      setBuyDate(todayYYYYMMDD());
+      setBuyDate(mostRecentBusinessDayYYYYMMDD());
     } catch (err) {
       setError(err.message || "Validation failed.");
     } finally {

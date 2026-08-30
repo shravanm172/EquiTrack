@@ -7,7 +7,11 @@ import EquityCurveCard from "../components/EquityCurveCard";
 import MetricsCard from "../components/MetricsCard";
 import ForecastSummaryCard from "../components/ForecastSummaryCard";
 import { runPortfolioAnalysis } from "../services/runAnalysis";
-import { analyzeWithStress } from "../services/runStressAnalysis";
+import {
+  runDeterministicRegimeStress,
+  previewCalibratedRegimeStates,
+  runCalibratedRegimeStress,
+} from "../services/runStressService";
 import { runForecast } from "../services/runForecast";
 import StressControls from "../components/StressControls";
 import ForecastControls from "../components/ForecastControls";
@@ -29,19 +33,23 @@ export default function SimulatorPage() {
 
   const today = todayYYYYMMDD();
 
-  const [stress, setStress] = useState(null);
+  // Stress testing: two shock mechanisms, both forward Monte Carlo
+  // simulations from an as-of date, both requiring a prior analysis
+  // (analysis_id-based, same precondition as forecasting).
+  const [stressResult, setStressResult] = useState(null);
   const [stressLoading, setStressLoading] = useState(false);
+  const [regimePreview, setRegimePreview] = useState(null); // calibrated_regime step 1 result
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [shock, setShock] = useState({
-    type: "permanent", // "permanent" | "linear_rebound" | "regime_shift"
-    date: "", // YYYY-MM-DD (required)
-    pct: -0.2, // e.g. -0.2 = -20%
-    rebound_days: 10, // only used for linear_rebound
-    vol_mult: 1.5, // only used for regime_shift
-    drift_shift: -0.0005, // only used for regime_shift
+    type: "deterministic_regime", // "deterministic_regime" | "calibrated_regime"
+    as_of_date: "", // YYYY-MM-DD, optional -- blank means end of analysis window
+    drift_shift: -0.0005, // deterministic_regime only
+    vol_mult: 1.5, // deterministic_regime only
+    n_regimes: 3, // calibrated_regime only
+    selected_state: null, // calibrated_regime only, set by RegimeStatesTable
   });
 
   const [forecast, setForecast] = useState(null);
-  const [stressForecast, setStressForecast] = useState(null);
   const [forecastDays, setForecastDays] = useState(30);
   const [forecastType, setForecastType] = useState("deterministic");
   const [model, setModel] = useState("gbm");
@@ -57,9 +65,9 @@ export default function SimulatorPage() {
 
     // Optional but recommended: clear results
     setAnalysis(null);
-    setStress(null);
     setForecast(null);
-    setStressForecast(null);
+    setStressResult(null);
+    setRegimePreview(null);
   }
 
   async function handleRunAnalysis() {
@@ -68,8 +76,8 @@ export default function SimulatorPage() {
     setLoading(true);
     setAnalysis(null);
     setForecast(null); // Clear previous forecast results
-    setStress(null);
-    setStressForecast(null);
+    setStressResult(null);
+    setRegimePreview(null);
     try {
       const result = await runPortfolioAnalysis({
         holdings,
@@ -84,24 +92,74 @@ export default function SimulatorPage() {
     }
   }
 
-  async function handleRunStress() {
-    // For stress testing
+  async function handlePreviewRegimeStates() {
     setError("");
-    setStress(null); // Clear previous results
-    setStressForecast(null);
-    setForecast(null); // Clear previous forecast results
-    setAnalysis(null);
-    setStressLoading(true);
+
+    if (!analysis?.analysis_id) {
+      setError("Run analysis first.");
+      return;
+    }
+
+    setPreviewLoading(true);
+    setRegimePreview(null);
+    setStressResult(null);
+    setShock((s) => ({ ...s, selected_state: null }));
+
     try {
-      const result = await analyzeWithStress({
-        holdings,
-        startDate,
-        endDate,
-        shock,
+      const result = await previewCalibratedRegimeStates({
+        analysisId: analysis.analysis_id,
+        source: "baseline",
+        asOfDate: shock.as_of_date || undefined,
+        nRegimes: shock.n_regimes,
       });
-      setStress(result);
+      setRegimePreview(result);
     } catch (err) {
-      setError(err.message || "Stress analysis failed.");
+      setError(err.message || "Regime preview failed.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function handleRunStress() {
+    setError("");
+
+    if (!analysis?.analysis_id) {
+      setError("Run analysis first.");
+      return;
+    }
+
+    setStressResult(null);
+    setForecast(null); // only one active result on screen at a time
+    setStressLoading(true);
+
+    try {
+      let result;
+
+      if (shock.type === "calibrated_regime") {
+        if (!regimePreview || shock.selected_state == null) {
+          throw new Error("Preview regime states and select one first.");
+        }
+        result = await runCalibratedRegimeStress({
+          regimeId: regimePreview.regime_id,
+          selectedState: shock.selected_state,
+          days: forecastDays,
+          simulations,
+        });
+      } else {
+        result = await runDeterministicRegimeStress({
+          analysisId: analysis.analysis_id,
+          source: "baseline",
+          asOfDate: shock.as_of_date || undefined,
+          days: forecastDays,
+          simulations,
+          driftShift: shock.drift_shift,
+          volMult: shock.vol_mult,
+        });
+      }
+
+      setStressResult(result);
+    } catch (err) {
+      setError(err.message || "Stress test failed.");
     } finally {
       setStressLoading(false);
     }
@@ -109,12 +167,14 @@ export default function SimulatorPage() {
 
   async function handleRunForecast() {
     setError("");
-    setStressForecast(null);
 
     if (!analysis?.analysis_id) {
       setError("Run analysis first.");
       return;
     }
+
+    setStressResult(null); // only one active result on screen at a time
+    setRegimePreview(null);
 
     try {
       const usesRolling =
@@ -139,75 +199,12 @@ export default function SimulatorPage() {
       });
 
       setForecast(result);
-
-      console.log("forecast type", result?.inputs?.forecast?.type);
-      console.log("historical curve", result?.historical_equity_curve?.length);
-
-      if (result?.inputs?.forecast?.type === "deterministic") {
-        console.log("forecast curve", result?.equity_curve?.length);
-        console.log("forecast fc", result?.forecast_equity_curve?.length);
-      } else {
-        console.log("forecast p10", result?.forecast_paths?.p10?.length);
-        console.log("forecast p50", result?.forecast_paths?.p50?.length);
-        console.log("forecast p90", result?.forecast_paths?.p90?.length);
-      }
     } catch (err) {
       setError(err.message || "Forecast failed.");
     }
   }
 
-  async function handleRunStressForecast() {
-    setError("");
-    setForecast(null);
-
-    try {
-      const stressId = stress?.analysis_id || stress?.inputs?.analysis_id;
-      if (!stressId) {
-        throw new Error("Stress analysis_id missing. Re-run stress test.");
-      }
-
-      const usesRolling =
-        driftMode === "rolling" ||
-        (forecastType === "stochastic" && volMode === "rolling");
-
-      const usesEwma =
-        driftMode === "ewma" ||
-        (forecastType === "stochastic" && volMode === "ewma");
-
-      const commonArgs = {
-        type: forecastType,
-        model: forecastType === "stochastic" ? model : undefined,
-        days: forecastDays,
-        driftMode,
-        volMode: forecastType === "stochastic" ? volMode : undefined,
-        simulations: forecastType === "stochastic" ? simulations : undefined,
-        window: usesRolling ? rollingWindow : undefined,
-        lambda: usesEwma ? ewmaLambda : undefined,
-      };
-
-      const [baselineFc, scenarioFc] = await Promise.all([
-        runForecast({
-          analysisId: stressId,
-          source: "baseline",
-          ...commonArgs,
-        }),
-        runForecast({
-          analysisId: stressId,
-          source: "scenario",
-          ...commonArgs,
-        }),
-      ]);
-
-      setStressForecast({
-        baseline: baselineFc,
-        scenario: scenarioFc,
-      });
-    } catch (err) {
-      setError(err.message || "Stress forecast failed.");
-    }
-  }
-
-  useBootstrapTooltip([analysis, stress, forecast, stressForecast]); // reinitialize tooltips when results change
+  useBootstrapTooltip([analysis, stressResult, forecast, regimePreview]); // reinitialize tooltips when results change
 
   return (
     <div className="simulator-page">
@@ -269,7 +266,8 @@ export default function SimulatorPage() {
             {error && <div className="text-danger">{error}</div>}
           </div>
 
-          {/* Render forecast controls only if we have analysis results (need analysis_id) */}
+          {/* Forecast and stress controls both require a prior analysis
+              (analysis_id-based). */}
           {analysis && (
             <ForecastControls
               forecastType={forecastType}
@@ -293,38 +291,19 @@ export default function SimulatorPage() {
             />
           )}
 
-          {/* Stress test controls */}
-          <StressControls
-            shock={shock}
-            setShock={setShock}
-            startDate={startDate}
-            endDate={endDate}
-            today={today}
-            stressLoading={stressLoading}
-            onRunStress={handleRunStress}
-            onError={setError}
-          />
-
-          {stress && (
-            <ForecastControls
-              forecastType={forecastType}
-              setForecastType={setForecastType}
-              forecastDays={forecastDays}
-              setForecastDays={setForecastDays}
-              model={model}
-              setModel={setModel}
-              driftMode={driftMode}
-              setDriftMode={setDriftMode}
-              volMode={volMode}
-              setVolMode={setVolMode}
-              simulations={simulations}
-              setSimulations={setSimulations}
-              rollingWindow={rollingWindow}
-              setRollingWindow={setRollingWindow}
-              ewmaLambda={ewmaLambda}
-              setEwmaLambda={setEwmaLambda}
-              onRun={handleRunStressForecast}
-              buttonLabel="Run Forecast"
+          {analysis && (
+            <StressControls
+              shock={shock}
+              setShock={setShock}
+              startDate={startDate}
+              endDate={endDate}
+              today={today}
+              stressLoading={stressLoading}
+              previewLoading={previewLoading}
+              regimePreview={regimePreview}
+              onPreviewRegimeStates={handlePreviewRegimeStates}
+              onRunStress={handleRunStress}
+              onError={setError}
             />
           )}
         </section>
@@ -337,24 +316,27 @@ export default function SimulatorPage() {
           </p>
 
           {/* Equity Curve */}
-          {analysis || stress ? (
+          {analysis || stressResult ? (
             <EquityCurveCard
               analysis={analysis}
-              stress={stress}
               forecast={forecast}
-              stressForecast={stressForecast}
+              stressResult={stressResult}
             />
           ) : (
             <div className="panel-block">Equity curve</div>
           )}
 
           {/* Analytics Metrics */}
-          {analysis || stress || forecast || stressForecast ? (
+          {analysis || forecast || stressResult || regimePreview ? (
             <AnalyticsPanel
               analysis={analysis}
-              stress={stress}
               forecast={forecast}
-              stressForecast={stressForecast}
+              stressResult={stressResult}
+              regimePreview={regimePreview}
+              selectedState={shock.selected_state}
+              onSelectState={(s) =>
+                setShock((prev) => ({ ...prev, selected_state: s }))
+              }
             />
           ) : (
             <div className="panel-block">Analytics</div>

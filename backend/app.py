@@ -117,6 +117,21 @@ def create_app() -> Flask:
                 "note": note,
             }), 200
 
+        except ValueError:
+            # fetch_price_history raises when the requested window has no
+            # trading days in it at all -- a bad ticker, or (the common
+            # case here) a lookahead window that's entirely a weekend/
+            # holiday/future dates with no data yet. That's a normal
+            # "nothing found" result, not a provider outage -- don't let it
+            # fall through to the 503 branch below.
+            return jsonify({
+                "valid": False,
+                "ticker": ticker,
+                "requested_date": requested_date,
+                "reason": "no_price_data",
+                "message": "No price data returned in the lookahead window.",
+            }), 200
+
         except Exception as e:
             msg = str(e).lower()
 

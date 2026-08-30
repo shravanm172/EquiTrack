@@ -1,11 +1,7 @@
 import AnalyticsCard from "./AnalyticsCard";
 import MetricRow from "./MetricRow";
-import {
-  formatPct,
-  formatNum,
-  formatMoney,
-  diffObjects,
-} from "../lib/formatters";
+import RegimeStatesTable from "./RegimeStatesTable";
+import { formatPct, formatNum, formatMoney } from "../lib/formatters";
 
 function RiskMetricsBlock({ metrics }) {
   if (!metrics) return null;
@@ -81,10 +77,22 @@ function ForecastSummaryBlock({ summary }) {
   );
 }
 
-function StochasticForecastSummaryBlock({ terminal, drawdown, volatility }) {
+function StochasticForecastSummaryBlock({
+  terminal,
+  drawdown,
+  volatility,
+  variance,
+}) {
   if (!terminal && !drawdown) return null;
 
   const fmtDrawdown = (x) => (x == null ? "—" : `${(-x * 100).toFixed(2)}%`);
+
+  // variance is per-path terminal variance (daily units) -- convert to
+  // annualized volatility so it reads in the same units as every other
+  // volatility figure in the app, rather than a raw, hard-to-interpret
+  // variance number.
+  const annualizedVolFromVariance = (v) =>
+    v == null ? undefined : Math.sqrt(v * 252);
 
   return (
     <>
@@ -126,8 +134,40 @@ function StochasticForecastSummaryBlock({ terminal, drawdown, volatility }) {
       <MetricRow
         label="Annualized Volatility"
         value={formatPct(volatility?.annualized_volatility)}
-        tooltip="The forecast volatility parameter used in the stochastic simulation, annualized."
+        tooltip="The forecast volatility parameter used in the stochastic simulation, annualized. Only set for GBM, which uses one fixed volatility for the whole simulation."
       />
+      {variance && (
+        <>
+          <MetricRow
+            label="Mean Terminal Volatility"
+            value={formatPct(
+              annualizedVolFromVariance(variance.mean_terminal_variance),
+            )}
+            tooltip="Annualized volatility implied by the average terminal variance across simulated paths. Set for models with path-dependent variance (GARCH, Heston, regime-switching), not GBM."
+          />
+          <MetricRow
+            label="Median Terminal Volatility"
+            value={formatPct(
+              annualizedVolFromVariance(variance.median_terminal_variance),
+            )}
+            tooltip="Annualized volatility implied by the median terminal variance across simulated paths."
+          />
+          <MetricRow
+            label="P10 Terminal Volatility"
+            value={formatPct(
+              annualizedVolFromVariance(variance.p10_terminal_variance),
+            )}
+            tooltip="Annualized volatility implied by the 10th percentile terminal variance across simulated paths -- the calmer end of the distribution."
+          />
+          <MetricRow
+            label="P90 Terminal Volatility"
+            value={formatPct(
+              annualizedVolFromVariance(variance.p90_terminal_variance),
+            )}
+            tooltip="Annualized volatility implied by the 90th percentile terminal variance across simulated paths -- the stormier end of the distribution."
+          />
+        </>
+      )}
     </>
   );
 }
@@ -136,234 +176,92 @@ function getForecastType(fc) {
   return fc?.inputs?.forecast?.type || "deterministic";
 }
 
+function getShockType(sr) {
+  return sr?.inputs?.shock?.type;
+}
+
+function shockTitle(shockType) {
+  if (shockType === "calibrated_regime") {
+    return "Calibrated Regime-Switching Stress Test";
+  }
+  if (shockType === "deterministic_regime") {
+    return "Deterministic Regime-Shift Stress Test";
+  }
+  return "Stress Test";
+}
+
 export default function AnalyticsPanel({
   analysis,
-  stress,
   forecast,
-  stressForecast,
+  stressResult,
+  regimePreview,
+  selectedState,
+  onSelectState,
 }) {
   const hasAnalysis = !!analysis?.metrics;
 
-  const hasStress = !!stress?.baseline?.metrics && !!stress?.scenario?.metrics;
-  const hasStressDelta = !!stress?.delta?.metrics;
-
   const forecastType = getForecastType(forecast);
-  const stressBaselineForecastType = getForecastType(stressForecast?.baseline);
-  const stressScenarioForecastType = getForecastType(stressForecast?.scenario);
-
   const hasDeterministicForecast =
     forecastType === "deterministic" && !!forecast?.summary;
-
   const hasStochasticForecast =
     forecastType === "stochastic" &&
     (!!forecast?.terminal || !!forecast?.drawdown);
 
-  const hasStressDeterministicForecast =
-    stressBaselineForecastType === "deterministic" &&
-    stressScenarioForecastType === "deterministic" &&
-    !!stressForecast?.baseline?.summary &&
-    !!stressForecast?.scenario?.summary;
-
-  const hasStressStochasticForecast =
-    stressBaselineForecastType === "stochastic" &&
-    stressScenarioForecastType === "stochastic" &&
-    !!stressForecast?.baseline?.terminal &&
-    !!stressForecast?.scenario?.terminal;
-
-  const deterministicForecastDelta = hasStressDeterministicForecast
-    ? diffObjects(
-        stressForecast.baseline.summary,
-        stressForecast.scenario.summary,
-      )
-    : null;
-
-  const stochasticTerminalDelta = hasStressStochasticForecast
-    ? diffObjects(
-        stressForecast.baseline.terminal,
-        stressForecast.scenario.terminal,
-      )
-    : null;
-
-  const stochasticDrawdownDelta = hasStressStochasticForecast
-    ? diffObjects(
-        stressForecast.baseline.drawdown,
-        stressForecast.scenario.drawdown,
-      )
-    : null;
-
-  const stochasticVolatilityDelta = hasStressStochasticForecast
-    ? diffObjects(
-        stressForecast.baseline.volatility,
-        stressForecast.scenario.volatility,
-      )
-    : null;
-
-  const isStressForecastMode =
-    hasStress &&
-    (hasStressDeterministicForecast || hasStressStochasticForecast);
+  const hasRegimePreview = !!regimePreview?.regime_stats?.length;
+  const hasStressForecast = !!stressResult?.terminal || !!stressResult?.drawdown;
 
   return (
     <div className="analytics-panel">
-      {/* ---- Non-stress (plain) ---- */}
-      {hasAnalysis && !hasStress && (
+      {hasAnalysis && (
         <AnalyticsCard title="Risk Metrics">
           <RiskMetricsBlock metrics={analysis.metrics} />
         </AnalyticsCard>
       )}
 
-      {hasDeterministicForecast && !hasStressDeterministicForecast && (
+      {hasDeterministicForecast && (
         <AnalyticsCard title="Forecast Summary">
           <ForecastSummaryBlock summary={forecast.summary} />
         </AnalyticsCard>
       )}
 
-      {hasStochasticForecast && !hasStressStochasticForecast && (
+      {hasStochasticForecast && (
         <AnalyticsCard title="Stochastic Forecast Summary">
           <StochasticForecastSummaryBlock
             terminal={forecast.terminal}
             drawdown={forecast.drawdown}
             volatility={forecast.volatility}
+            variance={forecast.variance}
           />
         </AnalyticsCard>
       )}
 
-      {/* ---- Stress forecast mode (2-row layout) ---- */}
-      {isStressForecastMode ? (
-        <>
-          <div className="analytics-row analytics-row--risk">
-            <AnalyticsCard title="Risk Metrics (Baseline)">
-              <RiskMetricsBlock metrics={stress.baseline.metrics} />
-            </AnalyticsCard>
+      {/* calibrated_regime step 1 -- fitted states, pick one to stress test */}
+      {hasRegimePreview && (
+        <AnalyticsCard title="Regime States (fitted)">
+          <RegimeStatesTable
+            regimeStats={regimePreview.regime_stats}
+            selectedState={selectedState}
+            onSelectState={onSelectState}
+          />
+        </AnalyticsCard>
+      )}
 
-            <AnalyticsCard title="Risk Metrics (Scenario)">
-              <RiskMetricsBlock metrics={stress.scenario.metrics} />
-            </AnalyticsCard>
-
-            {hasStressDelta && (
-              <AnalyticsCard title="Risk Metrics Δ (Scenario − Baseline)">
-                <RiskMetricsBlock metrics={stress.delta.metrics} />
-              </AnalyticsCard>
-            )}
-          </div>
-
-          <div className="analytics-row analytics-row--forecast">
-            {hasStressDeterministicForecast ? (
-              <>
-                <AnalyticsCard title="Forecast Summary (Baseline)">
-                  <ForecastSummaryBlock
-                    summary={stressForecast.baseline.summary}
-                  />
-                </AnalyticsCard>
-
-                <AnalyticsCard title="Forecast Summary (Scenario)">
-                  <ForecastSummaryBlock
-                    summary={stressForecast.scenario.summary}
-                  />
-                </AnalyticsCard>
-
-                <AnalyticsCard title="Forecast Summary Δ (Scenario − Baseline)">
-                  <ForecastSummaryBlock summary={deterministicForecastDelta} />
-                </AnalyticsCard>
-              </>
-            ) : (
-              <>
-                <AnalyticsCard title="Stochastic Forecast Summary (Baseline)">
-                  <StochasticForecastSummaryBlock
-                    terminal={stressForecast.baseline.terminal}
-                    drawdown={stressForecast.baseline.drawdown}
-                    volatility={stressForecast.baseline.volatility}
-                  />
-                </AnalyticsCard>
-
-                <AnalyticsCard title="Stochastic Forecast Summary (Scenario)">
-                  <StochasticForecastSummaryBlock
-                    terminal={stressForecast.scenario.terminal}
-                    drawdown={stressForecast.scenario.drawdown}
-                    volatility={stressForecast.scenario.volatility}
-                  />
-                </AnalyticsCard>
-
-                <AnalyticsCard title="Stochastic Forecast Δ (Scenario − Baseline)">
-                  <StochasticForecastSummaryBlock
-                    terminal={stochasticTerminalDelta}
-                    drawdown={stochasticDrawdownDelta}
-                    volatility={stochasticVolatilityDelta}
-                  />
-                </AnalyticsCard>
-              </>
-            )}
-          </div>
-        </>
-      ) : (
-        <>
-          {/* ---- Stress only (no forecast) ---- */}
-          {hasStress && (
-            <div className="analytics-row analytics-row--risk">
-              <AnalyticsCard title="Risk Metrics (Baseline)">
-                <RiskMetricsBlock metrics={stress.baseline.metrics} />
-              </AnalyticsCard>
-
-              <AnalyticsCard title="Risk Metrics (Scenario)">
-                <RiskMetricsBlock metrics={stress.scenario.metrics} />
-              </AnalyticsCard>
-
-              {hasStressDelta && (
-                <AnalyticsCard title="Risk Metrics Δ (Scenario − Baseline)">
-                  <RiskMetricsBlock metrics={stress.delta.metrics} />
-                </AnalyticsCard>
-              )}
-            </div>
-          )}
-
-          {/* ---- Stress forecast only (edge case) ---- */}
-          {hasStressDeterministicForecast && (
-            <>
-              <AnalyticsCard title="Forecast Summary (Baseline)">
-                <ForecastSummaryBlock
-                  summary={stressForecast.baseline.summary}
-                />
-              </AnalyticsCard>
-
-              <AnalyticsCard title="Forecast Summary (Scenario)">
-                <ForecastSummaryBlock
-                  summary={stressForecast.scenario.summary}
-                />
-              </AnalyticsCard>
-
-              <AnalyticsCard title="Forecast Summary Δ (Scenario − Baseline)">
-                <ForecastSummaryBlock summary={deterministicForecastDelta} />
-              </AnalyticsCard>
-            </>
-          )}
-
-          {hasStressStochasticForecast && (
-            <>
-              <AnalyticsCard title="Stochastic Forecast Summary (Baseline)">
-                <StochasticForecastSummaryBlock
-                  terminal={stressForecast.baseline.terminal}
-                  drawdown={stressForecast.baseline.drawdown}
-                  volatility={stressForecast.baseline.volatility}
-                />
-              </AnalyticsCard>
-
-              <AnalyticsCard title="Stochastic Forecast Summary (Scenario)">
-                <StochasticForecastSummaryBlock
-                  terminal={stressForecast.scenario.terminal}
-                  drawdown={stressForecast.scenario.drawdown}
-                  volatility={stressForecast.scenario.volatility}
-                />
-              </AnalyticsCard>
-
-              <AnalyticsCard title="Stochastic Forecast Δ (Scenario − Baseline)">
-                <StochasticForecastSummaryBlock
-                  terminal={stochasticTerminalDelta}
-                  drawdown={stochasticDrawdownDelta}
-                  volatility={stochasticVolatilityDelta}
-                />
-              </AnalyticsCard>
-            </>
-          )}
-        </>
+      {/* Either shock mechanism -- same response shape, same block. No
+          "volatility" prop: that's a single GBM input parameter, never
+          present on a stress response. "variance" IS present for
+          calibrated_regime (the regime-switching process has genuinely
+          path-dependent variance) and renders as annualized volatility
+          rows; deterministic_regime has none (constant sigma), so those
+          rows just don't appear -- same StochasticForecastSummaryBlock
+          handles both correctly since it's null-guarded already. */}
+      {hasStressForecast && (
+        <AnalyticsCard title={shockTitle(getShockType(stressResult))}>
+          <StochasticForecastSummaryBlock
+            terminal={stressResult.terminal}
+            drawdown={stressResult.drawdown}
+            variance={stressResult.variance}
+          />
+        </AnalyticsCard>
       )}
     </div>
   );
