@@ -229,34 +229,6 @@ def _seed_analysis_in_store(port_r: pd.Series, starting_cash: float = 100_000.0)
     )
 
 
-def _seed_shock_analysis_in_store(
-    baseline_r: pd.Series,
-    scenario_r: pd.Series,
-    starting_cash: float = 100_000.0,
-) -> str:
-    """
-    Seed an analyze_shock-style cache entry so source=baseline/source=scenario
-    can be tested through the unified forecast endpoint.
-    """
-    return analysis_store.put(
-        {
-            "kind": "analyze_shock",
-            "inputs": {
-                "mode": "weights",
-                "starting_cash": float(starting_cash),
-                "date_range": {"start": "2025-01-02", "end": "2025-01-08"},
-                "weights": {"AAPL": 0.5, "MSFT": 0.5},
-            },
-            "baseline_returns": baseline_r,
-            "scenario_returns": scenario_r,
-            "baseline_last_equity_date": baseline_r.index[-1],
-            "baseline_last_equity_value": 0.0,
-            "scenario_last_equity_date": scenario_r.index[-1],
-            "scenario_last_equity_value": 0.0,
-        }
-    )
-
-
 def test_forecast_endpoint_deterministic_returns_expected_shape(client, port_returns_uptrend):
     analysis_id = _seed_analysis_in_store(port_returns_uptrend)
 
@@ -370,33 +342,21 @@ def test_forecast_endpoint_stochastic_returns_expected_shape(client, port_return
     assert 0.0 <= drawdown["prob_drawdown_gt_20"] <= 1.0
 
 
-def test_forecast_endpoint_stochastic_scenario_source_works(
-    client, port_returns_uptrend, port_returns_mixed
-):
-    analysis_id = _seed_shock_analysis_in_store(
-        baseline_r=port_returns_uptrend,
-        scenario_r=port_returns_mixed,
-    )
+def test_forecast_endpoint_scenario_source_rejected(client, port_returns_uptrend):
+    """source='scenario' is retired -- forecasting only ever reads the
+    'analyze'-kind cache entry now, source must be 'baseline'."""
+    analysis_id = _seed_analysis_in_store(port_returns_uptrend)
 
     resp = client.post(
         "/api/forecast",
         json={
             "analysis_id": analysis_id,
             "source": "scenario",
-            "forecast": {
-                "type": "stochastic",
-                "days": 8,
-                "simulations": 300,
-                "drift_mode": "mean",
-                "vol_mode": "historical",
-            },
+            "forecast": {"type": "deterministic", "days": 8},
         },
     )
-    assert resp.status_code == 200
-
-    out = resp.get_json()
-    assert out["inputs"]["source"] == "scenario"
-    assert out["inputs"]["forecast"]["type"] == "stochastic"
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
 
 
 def test_forecast_endpoint_invalid_type_returns_400(client, port_returns_uptrend):

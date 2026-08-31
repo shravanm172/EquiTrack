@@ -3,7 +3,6 @@
 from typing import Any
 import pandas as pd
 
-from services.store_singleton import analysis_store
 from engines.analytics_engine import equity_curve
 from engines.analytics_engine import forecast_summary
 from engines.forecast_estimators import estimate_drift
@@ -72,83 +71,8 @@ def _forecast_from_returns(
 
     return {
         "trend": trend_meta,
-        "summary": summary,  
+        "summary": summary,
         "historical_equity_curve": hist_json,
         "forecast_equity_curve": fc_json,
         "equity_curve": combined_json,  # combined for plotting
-    }
-
-
-def forecast_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
-    """
-    Main entry point for portfolio forecasting.  
-
-    Returns forecasted equity curve and summary stats based on historical portfolio returns and specified forecasting method.
-    """
-    analysis_id = str(payload.get("analysis_id", "")).strip()
-    if not analysis_id:
-        raise ValueError("analysis_id is required.")
-
-    forecast_cfg = payload.get("forecast", {}) or {}
-    forecast_days = int(forecast_cfg.get("days", 30))
-    mode = str(forecast_cfg.get("mode", "mean")).strip().lower()
-
-    # rolling-specific param
-    window = forecast_cfg.get("window", None)
-
-    # ewma specific params
-    alpha = forecast_cfg.get("alpha", None)
-    lam = forecast_cfg.get("lambda", None)
-
-    # For shock analyses, user chooses baseline vs scenario
-    source = str(payload.get("source", "baseline")).strip().lower()
-    if source not in ("baseline", "scenario"):
-        raise ValueError("source must be 'baseline' or 'scenario'.")
-
-    item = analysis_store.get(analysis_id)
-    if item is None:
-        raise ValueError("analysis_id not found or expired. Re-run analysis.")
-
-    kind = item.get("kind")
-
-    if kind == "analyze":
-        port_r = item["portfolio_returns"]
-        starting_cash = float(item["inputs"]["starting_cash"])
-
-    elif kind == "analyze_shock":
-        port_r = item["baseline_returns"] if source == "baseline" else item["scenario_returns"]
-        starting_cash = float(item["inputs"]["starting_cash"])
-
-    else:
-        raise ValueError(f"Unsupported cached analysis kind: {kind}")
-
-    forecast_out = _forecast_from_returns(
-        port_r,
-        starting_cash,
-        forecast_days,
-        mode=mode,
-        window=window,
-        alpha=alpha,
-        lam=lam,
-    )
-
-    # echo back what was used
-    inputs_forecast = {"days": forecast_days, "mode": mode}
-    if mode == "rolling" and window is not None:
-        inputs_forecast["window"] = int(window)
-    if mode == "ewma":
-        if alpha is not None: # prefers alpha
-            inputs_forecast["alpha"] = float(alpha)
-        elif lam is not None:
-            inputs_forecast["lambda"] = float(lam)
-        else:
-            inputs_forecast["lambda"] = 0.94  # default
-
-    return {
-        "inputs": {
-            "analysis_id": analysis_id,
-            "source": source,
-            "forecast": inputs_forecast,
-        },
-        **forecast_out,
     }

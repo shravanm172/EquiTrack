@@ -118,8 +118,8 @@ def _build_stress_response(
         - stoch_out: Dict containing the output of the simulation
         - horizon: Size of the stress analysis window in days
         - analysis_id: The type of stress transform used for analysis
-        - source: Which cached return series the analysis was run against,
-          "baseline" or "scenario" -- passed straight through into
+        - source: Which cached return series the analysis was run against
+          (currently always "baseline") -- passed straight through into
           inputs.source, not used in any computation here
         - simulations: Number of Monte Carlo paths simulated (n_paths)
         - shock: Dict describing which shock mechanism produced stoch_out --
@@ -229,7 +229,7 @@ def run_deterministic_regime_stress_forecast(payload: dict[str, Any]) -> dict[st
     Parameters:
         - payload:
             - analysis_id (required): id from a prior /api/analyze call
-            - source (optional, default "baseline"): "baseline" or "scenario"
+            - source (optional, default "baseline"): must be "baseline"
             - as_of_date (optional, default: last cached date): YYYY-MM-DD,
               snapped forward to the next trading day if not one itself
             - days (optional, default 30): forecast horizon
@@ -249,8 +249,8 @@ def run_deterministic_regime_stress_forecast(payload: dict[str, Any]) -> dict[st
         raise ValueError("analysis_id is required.")
 
     source = str(payload.get("source", "baseline")).strip().lower()
-    if source not in ("baseline", "scenario"):
-        raise ValueError("source must be 'baseline' or 'scenario'.")
+    if source != "baseline":
+        raise ValueError("source must be 'baseline'.")
 
     as_of_requested = payload.get("as_of_date")
 
@@ -325,7 +325,7 @@ def preview_calibrated_regime_states(payload: dict[str, Any]) -> dict[str, Any]:
     Parameters:
         - payload:
             - analysis_id (required): id from a prior /api/analyze call
-            - source (optional, default "baseline"): "baseline" or "scenario"
+            - source (optional, default "baseline"): must be "baseline"
             - n_regimes (optional, default 3, must be 2-8): number of GMM states to fit
             - as_of_date (optional, default: last cached date): YYYY-MM-DD,
               snapped forward to the next trading day if not one itself
@@ -341,8 +341,8 @@ def preview_calibrated_regime_states(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("analysis_id is required.")
 
     source = str(payload.get("source", "baseline")).strip().lower()
-    if source not in ("baseline", "scenario"):
-        raise ValueError("source must be 'baseline' or 'scenario'.")
+    if source != "baseline":
+        raise ValueError("source must be 'baseline'.")
 
     n_regimes = int(payload.get("n_regimes", N_REGIMES_DEFAULT))
     if n_regimes < 2 or n_regimes > N_REGIMES_MAX:

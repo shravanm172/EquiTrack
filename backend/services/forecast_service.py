@@ -310,7 +310,7 @@ def forecast_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
     Stochastic:
     {
       "analysis_id": "...",
-      "source": "scenario",
+      "source": "baseline",
       "forecast": {
         "type": "stochastic",
         "days": 252,
@@ -325,8 +325,8 @@ def forecast_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("analysis_id is required.")
 
     source = str(payload.get("source", "baseline")).strip().lower()
-    if source not in ("baseline", "scenario"):
-        raise ValueError("source must be 'baseline' or 'scenario'.")
+    if source != "baseline":
+        raise ValueError("source must be 'baseline'.")
 
     forecast_cfg = payload.get("forecast", {}) or {}
     forecast_type = str(forecast_cfg.get("type", "deterministic")).strip().lower()
